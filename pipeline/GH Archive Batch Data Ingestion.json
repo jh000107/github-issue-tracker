@@ -1,0 +1,64 @@
+{
+	"name": "GH Archive Batch Data Ingestion",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get GH Archive Batch Data",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "JsonSource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "JsonReadSettings"
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "gh_archive_dataset",
+						"type": "DatasetReference",
+						"parameters": {
+							"year": {
+								"value": "@pipeline().parameters.year",
+								"type": "Expression"
+							},
+							"month": {
+								"value": "@pipeline().parameters.month",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			}
+		],
+		"parameters": {
+			"year": {
+				"type": "string",
+				"defaultValue": "2024"
+			},
+			"month": {
+				"type": "string",
+				"defaultValue": "03"
+			},
+			"day": {
+				"type": "string",
+				"defaultValue": "02"
+			}
+		},
+		"annotations": []
+	}
+}

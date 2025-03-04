@@ -1,0 +1,32 @@
+{
+	"name": "gh_archive_dataset",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "gh_archive_ls",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"year": {
+				"type": "string"
+			},
+			"month": {
+				"type": "string"
+			},
+			"day": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "HttpServerLocation",
+				"relativeUrl": {
+					"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}.json.gz",
+					"type": "Expression"
+				}
+			}
+		},
+		"schema": {}
+	}
+}
