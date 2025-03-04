@@ -25,6 +25,15 @@
 							"type": "JsonReadSettings"
 						}
 					},
+					"sink": {
+						"type": "JsonSink",
+						"storeSettings": {
+							"type": "AzureBlobStorageWriteSettings"
+						},
+						"formatSettings": {
+							"type": "JsonWriteSettings"
+						}
+					},
 					"enableStaging": false
 				},
 				"inputs": [
@@ -39,8 +48,18 @@
 							"month": {
 								"value": "@pipeline().parameters.month",
 								"type": "Expression"
+							},
+							"day": {
+								"value": "@pipeline().parameters.day",
+								"type": "Expression"
 							}
 						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "gh_archive_dataset_sink",
+						"type": "DatasetReference"
 					}
 				]
 			}
