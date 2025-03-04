@@ -75,7 +75,13 @@
 							"outputs": [
 								{
 									"referenceName": "gh_archive_dataset_sink",
-									"type": "DatasetReference"
+									"type": "DatasetReference",
+									"parameters": {
+										"filename": {
+											"value": "@{item()}.json.gz",
+											"type": "Expression"
+										}
+									}
 								}
 							]
 						}
