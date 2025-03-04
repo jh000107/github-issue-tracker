@@ -3,65 +3,84 @@
 	"properties": {
 		"activities": [
 			{
-				"name": "Get GH Archive Batch Data",
-				"type": "Copy",
+				"name": "For Each Hour",
+				"type": "ForEach",
 				"dependsOn": [],
-				"policy": {
-					"timeout": "0.12:00:00",
-					"retry": 0,
-					"retryIntervalInSeconds": 30,
-					"secureOutput": false,
-					"secureInput": false
-				},
 				"userProperties": [],
 				"typeProperties": {
-					"source": {
-						"type": "JsonSource",
-						"storeSettings": {
-							"type": "HttpReadSettings",
-							"requestMethod": "GET"
-						},
-						"formatSettings": {
-							"type": "JsonReadSettings"
-						}
+					"items": {
+						"value": "@range(0, 1)",
+						"type": "Expression"
 					},
-					"sink": {
-						"type": "JsonSink",
-						"storeSettings": {
-							"type": "AzureBlobStorageWriteSettings"
-						},
-						"formatSettings": {
-							"type": "JsonWriteSettings"
-						}
-					},
-					"enableStaging": false
-				},
-				"inputs": [
-					{
-						"referenceName": "gh_archive_dataset",
-						"type": "DatasetReference",
-						"parameters": {
-							"year": {
-								"value": "@pipeline().parameters.year",
-								"type": "Expression"
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Copy Data From GH Archive",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
 							},
-							"month": {
-								"value": "@pipeline().parameters.month",
-								"type": "Expression"
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "JsonSource",
+									"storeSettings": {
+										"type": "HttpReadSettings",
+										"requestMethod": "GET"
+									},
+									"formatSettings": {
+										"type": "JsonReadSettings"
+									}
+								},
+								"sink": {
+									"type": "JsonSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "JsonWriteSettings"
+									}
+								},
+								"enableStaging": false
 							},
-							"day": {
-								"value": "@pipeline().parameters.day",
-								"type": "Expression"
-							}
+							"inputs": [
+								{
+									"referenceName": "gh_archive_dataset",
+									"type": "DatasetReference",
+									"parameters": {
+										"year": {
+											"value": "@pipeline().parameters.year",
+											"type": "Expression"
+										},
+										"month": {
+											"value": "@pipeline().parameters.month",
+											"type": "Expression"
+										},
+										"day": {
+											"value": "@pipeline().parameters.year",
+											"type": "Expression"
+										},
+										"hour": {
+											"value": "@{if(equals(length(string(item())), 1), concat('0', string(item())),  string(item()))}",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "gh_archive_dataset_sink",
+									"type": "DatasetReference"
+								}
+							]
 						}
-					}
-				],
-				"outputs": [
-					{
-						"referenceName": "gh_archive_dataset_sink",
-						"type": "DatasetReference"
-					}
-				]
+					]
+				}
 			}
 		],
 		"parameters": {

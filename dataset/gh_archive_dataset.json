@@ -14,6 +14,9 @@
 			},
 			"day": {
 				"type": "string"
+			},
+			"hour": {
+				"type": "string"
 			}
 		},
 		"annotations": [],
@@ -22,7 +25,7 @@
 			"location": {
 				"type": "HttpServerLocation",
 				"relativeUrl": {
-					"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}-{0..23}.json.gz",
+					"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}-@{dataset().hour}.json.gz",
 					"type": "Expression"
 				}
 			}
