@@ -10,8 +10,7 @@
 		"typeProperties": {
 			"location": {
 				"type": "AzureBlobStorageLocation",
-				"fileName": "day=2",
-				"folderPath": "bronze/GH_archive_raw/year=2024/month=3",
+				"folderPath": "bronze/GH_archive_raw/year=2024/month=3/day=2",
 				"container": "github-realtime-issue"
 			}
 		},
