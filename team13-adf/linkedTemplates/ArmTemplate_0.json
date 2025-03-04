@@ -21,6 +21,19 @@
 	},
 	"resources": [
 		{
+			"name": "[concat(parameters('factoryName'), '/blob_storage_ls')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobStorage",
+				"typeProperties": {
+					"connectionString": "[parameters('blob_storage_ls_connectionString')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
 			"name": "[concat(parameters('factoryName'), '/gh_archive_ls')]",
 			"type": "Microsoft.DataFactory/factories/linkedServices",
 			"apiVersion": "2018-06-01",
@@ -31,19 +44,6 @@
 					"url": "[parameters('gh_archive_ls_properties_typeProperties_url')]",
 					"enableServerCertificateValidation": true,
 					"authenticationType": "Anonymous"
-				}
-			},
-			"dependsOn": []
-		},
-		{
-			"name": "[concat(parameters('factoryName'), '/blob_storage_ls')]",
-			"type": "Microsoft.DataFactory/factories/linkedServices",
-			"apiVersion": "2018-06-01",
-			"properties": {
-				"annotations": [],
-				"type": "AzureBlobStorage",
-				"typeProperties": {
-					"connectionString": "[parameters('blob_storage_ls_connectionString')]"
 				}
 			},
 			"dependsOn": []
@@ -74,7 +74,7 @@
 					"location": {
 						"type": "HttpServerLocation",
 						"relativeUrl": {
-							"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}.json.gz",
+							"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}-{0..23}.json.gz",
 							"type": "Expression"
 						}
 					}
