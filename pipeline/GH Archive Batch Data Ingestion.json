@@ -62,7 +62,7 @@
 											"type": "Expression"
 										},
 										"day": {
-											"value": "@pipeline().parameters.year",
+											"value": "@pipeline().parameters.day",
 											"type": "Expression"
 										},
 										"hour": {
