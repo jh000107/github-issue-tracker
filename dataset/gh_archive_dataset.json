@@ -22,7 +22,7 @@
 			"location": {
 				"type": "HttpServerLocation",
 				"relativeUrl": {
-					"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}.json.gz",
+					"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}-{0..23}.json.gz",
 					"type": "Expression"
 				}
 			}
