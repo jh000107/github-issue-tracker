@@ -7,3 +7,5 @@ Approach 1: Ingest compressed .gz files directly from GH Archive through Azure D
 
 Approach 2: Use AzCopy to directly store the data into the storage instead of processing through ADF
 - Pros: Cost Reduction
+
+## Data Analysis
