@@ -5,13 +5,18 @@
 			{
 				"name": "For Each Timestamp",
 				"type": "ForEach",
-				"state": "Inactive",
-				"onInactiveMarkAs": "Succeeded",
-				"dependsOn": [],
+				"dependsOn": [
+					{
+						"activity": "Lookup Timestamps",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
 				"userProperties": [],
 				"typeProperties": {
 					"items": {
-						"value": "@range(0, 24)",
+						"value": "@activity('Lookup Timestamps').output.timestamps",
 						"type": "Expression"
 					},
 					"isSequential": false,
@@ -56,20 +61,8 @@
 									"referenceName": "gh_archive_dataset",
 									"type": "DatasetReference",
 									"parameters": {
-										"year": {
-											"value": "@pipeline().parameters.year",
-											"type": "Expression"
-										},
-										"month": {
-											"value": "@pipeline().parameters.month",
-											"type": "Expression"
-										},
-										"day": {
-											"value": "@pipeline().parameters.day",
-											"type": "Expression"
-										},
-										"hour": {
-											"value": "@{item()}",
+										"timestamp": {
+											"value": "@item()",
 											"type": "Expression"
 										}
 									}
@@ -80,8 +73,17 @@
 									"referenceName": "gh_archive_dataset_sink",
 									"type": "DatasetReference",
 									"parameters": {
+										"year": "2024",
+										"month": {
+											"value": "@{split(item(),'-')[1]}",
+											"type": "Expression"
+										},
+										"day": {
+											"value": "@{split(item(),'-')[2]}",
+											"type": "Expression"
+										},
 										"filename": {
-											"value": "@{item()}.json.gz",
+											"value": "@item()",
 											"type": "Expression"
 										}
 									}
@@ -92,7 +94,7 @@
 				}
 			},
 			{
-				"name": "Lookup Timestamp",
+				"name": "Lookup Timestamps",
 				"type": "Lookup",
 				"dependsOn": [],
 				"policy": {

@@ -6,6 +6,15 @@
 			"type": "LinkedServiceReference"
 		},
 		"parameters": {
+			"year": {
+				"type": "string"
+			},
+			"month": {
+				"type": "string"
+			},
+			"day": {
+				"type": "string"
+			},
 			"filename": {
 				"type": "string"
 			}
@@ -19,7 +28,10 @@
 					"value": "@dataset().filename",
 					"type": "Expression"
 				},
-				"folderPath": "bronze/GH_archive_raw/year=2024/month=3/day=2",
+				"folderPath": {
+					"value": "bronze/GH_archive_raw/year=@{dataset().year}/month=@{dataset().month}/day=@{dataset().day}",
+					"type": "Expression"
+				},
 				"container": "github-realtime-issue"
 			}
 		},

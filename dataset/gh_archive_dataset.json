@@ -6,16 +6,7 @@
 			"type": "LinkedServiceReference"
 		},
 		"parameters": {
-			"year": {
-				"type": "string"
-			},
-			"month": {
-				"type": "string"
-			},
-			"day": {
-				"type": "string"
-			},
-			"hour": {
+			"timestamp": {
 				"type": "string"
 			}
 		},
@@ -25,7 +16,7 @@
 			"location": {
 				"type": "HttpServerLocation",
 				"relativeUrl": {
-					"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}-@{dataset().hour}.json.gz",
+					"value": "@{dataset().timestamp}.json.gz",
 					"type": "Expression"
 				}
 			}
