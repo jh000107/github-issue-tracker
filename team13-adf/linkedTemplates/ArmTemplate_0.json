@@ -168,7 +168,7 @@
 						"userProperties": [],
 						"typeProperties": {
 							"items": {
-								"value": "@activity('Lookup Timestamps').output.value['timestamps']",
+								"value": "@activity('Lookup Timestamps').output.value",
 								"type": "Expression"
 							},
 							"isSequential": false,
