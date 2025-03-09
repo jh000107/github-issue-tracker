@@ -122,19 +122,45 @@
 			]
 		},
 		{
+			"name": "[concat(parameters('factoryName'), '/timestamp_ds')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "blob_storage_ls",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "Json",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobStorageLocation",
+						"fileName": "timestamps.json",
+						"container": "github-realtime-issue"
+					}
+				},
+				"schema": {}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/blob_storage_ls')]"
+			]
+		},
+		{
 			"name": "[concat(parameters('factoryName'), '/GH Archive Batch Data Ingestion')]",
 			"type": "Microsoft.DataFactory/factories/pipelines",
 			"apiVersion": "2018-06-01",
 			"properties": {
 				"activities": [
 					{
-						"name": "For Each Hour",
+						"name": "For Each Timestamp",
 						"type": "ForEach",
+						"state": "Inactive",
+						"onInactiveMarkAs": "Succeeded",
 						"dependsOn": [],
 						"userProperties": [],
 						"typeProperties": {
 							"items": {
-								"value": "@range(0, 1)",
+								"value": "@range(0, 24)",
 								"type": "Expression"
 							},
 							"isSequential": false,
@@ -171,7 +197,8 @@
 												"type": "JsonWriteSettings"
 											}
 										},
-										"enableStaging": false
+										"enableStaging": false,
+										"dataIntegrationUnits": 4
 									},
 									"inputs": [
 										{
@@ -212,6 +239,38 @@
 								}
 							]
 						}
+					},
+					{
+						"name": "Lookup Timestamp",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "JsonSource",
+								"storeSettings": {
+									"type": "AzureBlobStorageReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								},
+								"formatSettings": {
+									"type": "JsonReadSettings"
+								}
+							},
+							"dataset": {
+								"referenceName": "timestamp_ds",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
 					}
 				],
 				"policy": {
@@ -234,6 +293,7 @@
 				"annotations": []
 			},
 			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/timestamp_ds')]",
 				"[concat(variables('factoryId'), '/datasets/gh_archive_dataset')]",
 				"[concat(variables('factoryId'), '/datasets/gh_archive_dataset_sink')]"
 			]
