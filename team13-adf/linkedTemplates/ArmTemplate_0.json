@@ -108,7 +108,7 @@
 					"location": {
 						"type": "AzureBlobStorageLocation",
 						"fileName": {
-							"value": "@dataset().filename",
+							"value": "@{dataset().filename}.json.gz",
 							"type": "Expression"
 						},
 						"folderPath": {
@@ -168,7 +168,7 @@
 						"userProperties": [],
 						"typeProperties": {
 							"items": {
-								"value": "@activity('Lookup Timestamps').output.timestamps",
+								"value": "@activity('Lookup Timestamps').output.value['timestamps']",
 								"type": "Expression"
 							},
 							"isSequential": false,
