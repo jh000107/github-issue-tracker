@@ -58,16 +58,7 @@
 					"type": "LinkedServiceReference"
 				},
 				"parameters": {
-					"year": {
-						"type": "string"
-					},
-					"month": {
-						"type": "string"
-					},
-					"day": {
-						"type": "string"
-					},
-					"hour": {
+					"timestamp": {
 						"type": "string"
 					}
 				},
@@ -77,7 +68,7 @@
 					"location": {
 						"type": "HttpServerLocation",
 						"relativeUrl": {
-							"value": "@{dataset().year}-@{dataset().month}-@{dataset().day}-@{dataset().hour}.json.gz",
+							"value": "@{dataset().timestamp}.json.gz",
 							"type": "Expression"
 						}
 					}
@@ -98,6 +89,15 @@
 					"type": "LinkedServiceReference"
 				},
 				"parameters": {
+					"year": {
+						"type": "string"
+					},
+					"month": {
+						"type": "string"
+					},
+					"day": {
+						"type": "string"
+					},
 					"filename": {
 						"type": "string"
 					}
@@ -111,7 +111,10 @@
 							"value": "@dataset().filename",
 							"type": "Expression"
 						},
-						"folderPath": "bronze/GH_archive_raw/year=2024/month=3/day=2",
+						"folderPath": {
+							"value": "bronze/GH_archive_raw/year=@{dataset().year}/month=@{dataset().month}/day=@{dataset().day}",
+							"type": "Expression"
+						},
 						"container": "github-realtime-issue"
 					}
 				},
@@ -154,13 +157,18 @@
 					{
 						"name": "For Each Timestamp",
 						"type": "ForEach",
-						"state": "Inactive",
-						"onInactiveMarkAs": "Succeeded",
-						"dependsOn": [],
+						"dependsOn": [
+							{
+								"activity": "Lookup Timestamps",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
 						"userProperties": [],
 						"typeProperties": {
 							"items": {
-								"value": "@range(0, 24)",
+								"value": "@activity('Lookup Timestamps').output.timestamps",
 								"type": "Expression"
 							},
 							"isSequential": false,
@@ -205,20 +213,8 @@
 											"referenceName": "gh_archive_dataset",
 											"type": "DatasetReference",
 											"parameters": {
-												"year": {
-													"value": "@pipeline().parameters.year",
-													"type": "Expression"
-												},
-												"month": {
-													"value": "@pipeline().parameters.month",
-													"type": "Expression"
-												},
-												"day": {
-													"value": "@pipeline().parameters.day",
-													"type": "Expression"
-												},
-												"hour": {
-													"value": "@{item()}",
+												"timestamp": {
+													"value": "@item()",
 													"type": "Expression"
 												}
 											}
@@ -229,8 +225,17 @@
 											"referenceName": "gh_archive_dataset_sink",
 											"type": "DatasetReference",
 											"parameters": {
+												"year": "2024",
+												"month": {
+													"value": "@{split(item(),'-')[1]}",
+													"type": "Expression"
+												},
+												"day": {
+													"value": "@{split(item(),'-')[2]}",
+													"type": "Expression"
+												},
 												"filename": {
-													"value": "@{item()}.json.gz",
+													"value": "@item()",
 													"type": "Expression"
 												}
 											}
@@ -241,7 +246,7 @@
 						}
 					},
 					{
-						"name": "Lookup Timestamp",
+						"name": "Lookup Timestamps",
 						"type": "Lookup",
 						"dependsOn": [],
 						"policy": {
