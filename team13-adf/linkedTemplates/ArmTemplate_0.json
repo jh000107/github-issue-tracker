@@ -281,20 +281,6 @@
 				"policy": {
 					"elapsedTimeMetric": {}
 				},
-				"parameters": {
-					"year": {
-						"type": "string",
-						"defaultValue": "2024"
-					},
-					"month": {
-						"type": "string",
-						"defaultValue": "03"
-					},
-					"day": {
-						"type": "string",
-						"defaultValue": "02"
-					}
-				},
 				"annotations": []
 			},
 			"dependsOn": [
