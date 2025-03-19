@@ -1,9 +1,0 @@
-{
-	"name": "team13-adf",
-	"location": "eastus2",
-	"identity": {
-		"type": "SystemAssigned",
-		"principalId": "32a9457e-6ab1-4e7e-90ce-c218409c7865",
-		"tenantId": "d57d32cc-c121-488f-b07b-dfe705680c71"
-	}
-}
