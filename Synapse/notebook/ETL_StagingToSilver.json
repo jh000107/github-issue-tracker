@@ -1,0 +1,208 @@
+{
+	"name": "ETL_StagingToSilver",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "decompressSmall",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"runAsWorkspaceSystemIdentity": false,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "fa0b6c32-a95d-43b4-98ca-fd108c6a912c"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"synapse_widget": {
+				"version": "0.1"
+			},
+			"enableDebugMode": false,
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/3b608a14-90b7-42d9-82e2-77c947974137/resourceGroups/DS562-Team-13/providers/Microsoft.Synapse/workspaces/team13-github-realtime-events/bigDataPools/decompressSmall",
+				"name": "decompressSmall",
+				"type": "Spark",
+				"endpoint": "https://team13-github-realtime-events.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/decompressSmall",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net",
+					"authHeader": null
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 10,
+				"cores": 4,
+				"memory": 28,
+				"extraHeader": null
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"source": [
+					"# Load the recovered staging data from Delta into a DataFrame\n",
+					"source_df = spark.read.format(\"delta\").load(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/recovered_staging/\").cache()\n",
+					"source_df.show(5)  "
+				],
+				"execution_count": 2
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"INSERT OVERWRITE TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+					"SELECT\n",
+					"  CAST(event_id AS BIGINT) AS event_id,\n",
+					"  action,\n",
+					"  \n",
+					"  -- Issue Features\n",
+					"  issue.title AS issue_title,\n",
+					"  issue.body AS issue_body,\n",
+					"  issue.author_association,\n",
+					"  issue.state AS issue_state,\n",
+					"  issue.state_reason AS issue_state_reason,\n",
+					"  \n",
+					"  -- Issue Creator Struct (dimension)\n",
+					"  named_struct(\n",
+					"    'id', CAST(issue.user.id AS BIGINT),\n",
+					"    'login', issue.user.login,\n",
+					"    'is_bot', CASE WHEN issue.user.type != 'Bot' THEN 0 ELSE 1 END\n",
+					"  ) AS dim_issue_creator,\n",
+					"  \n",
+					"  -- Other Issue Attributes\n",
+					"  CAST(issue.comments AS BIGINT) AS issue_comment_count,\n",
+					"  CASE\n",
+					"    WHEN issue.assignee IS NOT NULL THEN GREATEST(SIZE(issue.assignees), 1)\n",
+					"    ELSE SIZE(issue.assignees)\n",
+					"  END AS num_assignees,\n",
+					"  \n",
+					"  -- Labels\n",
+					"  issue.labels AS labels,\n",
+					"  \n",
+					"  -- Milestone Struct (dimension)\n",
+					"  CASE\n",
+					"    WHEN issue.milestone IS NOT NULL THEN named_struct(\n",
+					"      'id', CAST(issue.milestone.id AS BIGINT),\n",
+					"      'title', issue.milestone.title,\n",
+					"      'description', issue.milestone.description,\n",
+					"      'state', issue.milestone.state,\n",
+					"      'closed_issues', CAST(issue.milestone.closed_issues AS BIGINT),\n",
+					"      'open_issues', CAST(issue.milestone.open_issues AS BIGINT),\n",
+					"      'due_on', CAST(issue.milestone.due_on AS TIMESTAMP),\n",
+					"      'created_at', CAST(issue.milestone.created_at AS TIMESTAMP),\n",
+					"      'updated_at', CAST(issue.milestone.updated_at AS TIMESTAMP),\n",
+					"      'closed_at', CAST(issue.milestone.closed_at AS TIMESTAMP)\n",
+					"    )\n",
+					"    ELSE NULL\n",
+					"  END AS dim_milestone,\n",
+					"  \n",
+					"  -- Timestamps\n",
+					"  CAST(issue.created_at AS TIMESTAMP) AS issue_created_at,\n",
+					"  CAST(issue.closed_at AS TIMESTAMP) AS issue_closed_at,\n",
+					"  CAST(issue.updated_at AS TIMESTAMP) AS issue_updated_at,\n",
+					"  CAST(created_at AS TIMESTAMP) AS event_created_at,\n",
+					"  \n",
+					"  -- Foreign Keys & Dimension Info\n",
+					"  CAST(issue.id AS BIGINT) AS dim_issue_id,\n",
+					"  \n",
+					"  -- Combine actor.id and actor.login into a struct for dim_actor\n",
+					"  named_struct(\n",
+					"    'id', CAST(actor.id AS BIGINT),\n",
+					"    'login', actor.login\n",
+					"  ) AS dim_actor,\n",
+					"  \n",
+					"  CAST(org.id AS BIGINT) AS dim_org_id,\n",
+					"  org.login AS dim_org_name,\n",
+					"  CAST(repo.id AS BIGINT) AS dim_repo_id,\n",
+					"  repo.name AS dim_repo_name\n",
+					"FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/recovered_staging/`;"
+				],
+				"execution_count": 30
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+					"where action = 'opened'"
+				],
+				"execution_count": 31
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+					"where action = 'closed'"
+				],
+				"execution_count": 32
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+					"where action = 'reopened'"
+				],
+				"execution_count": 33
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+					"where issue_closed_at is not null"
+				],
+				"execution_count": 34
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					""
+				]
+			}
+		]
+	}
+}

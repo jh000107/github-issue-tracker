@@ -1,0 +1,155 @@
+{
+	"name": "DDL_Create_SilverTable",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "decompressSmall",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"runAsWorkspaceSystemIdentity": false,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "1b7c64e6-a8ac-437a-b40f-3eb3fb425038"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"synapse_widget": {
+				"version": "0.1"
+			},
+			"enableDebugMode": false,
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/3b608a14-90b7-42d9-82e2-77c947974137/resourceGroups/DS562-Team-13/providers/Microsoft.Synapse/workspaces/team13-github-realtime-events/bigDataPools/decompressSmall",
+				"name": "decompressSmall",
+				"type": "Spark",
+				"endpoint": "https://team13-github-realtime-events.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/decompressSmall",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net",
+					"authHeader": null
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 10,
+				"cores": 4,
+				"memory": 28,
+				"extraHeader": null
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"CREATE TABLE IF NOT EXISTS delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+					"(\n",
+					"  -- Primary Key & Event Type\n",
+					"  event_id BIGINT COMMENT 'Unique identifier for the event',\n",
+					"  action STRING COMMENT 'Type of issue event (created, closed, reopened)',\n",
+					"\n",
+					"  -- Issue Metadata\n",
+					"  issue_title STRING COMMENT 'Title of the issue',\n",
+					"  issue_body STRING COMMENT 'Detailed description of the issue',\n",
+					"  author_association STRING COMMENT 'Association of the issue creator with the repository',\n",
+					"  issue_state STRING COMMENT 'Current state of the issue (open, closed)',\n",
+					"  issue_state_reason STRING COMMENT 'Reason why the issue was closed, if applicable',\n",
+					"\n",
+					"  -- Dimension: Issue Creator (STRUCT)\n",
+					"  dim_issue_creator STRUCT<\n",
+					"    id: BIGINT COMMENT 'Unique user ID',\n",
+					"    login: STRING COMMENT 'GitHub username of the issue creator',\n",
+					"    is_bot: INT COMMENT '1 if the user is a bot, 0 otherwise'\n",
+					"  > COMMENT 'Details of the issue creator',\n",
+					"\n",
+					"  -- Other Issue Attributes\n",
+					"  issue_comment_count BIGINT COMMENT 'Total number of comments on the issue',\n",
+					"  num_assignees INT COMMENT 'Number of assignees for the issue',\n",
+					"\n",
+					"  -- Labels (Stored as an Array of Structs)\n",
+					"  labels ARRAY<STRUCT<\n",
+					"    color: STRING COMMENT 'Hex color of the label',\n",
+					"    default: BOOLEAN COMMENT 'TRUE if this is a default GitHub label',\n",
+					"    description: STRING COMMENT 'Label description',\n",
+					"    id: BIGINT COMMENT 'Unique label ID',\n",
+					"    name: STRING COMMENT 'Label name',\n",
+					"    node_id: STRING COMMENT 'GraphQL node ID',\n",
+					"    url: STRING COMMENT 'API URL for the label'\n",
+					"  >> COMMENT 'Labels assigned to the issue',\n",
+					"\n",
+					"\n",
+					"  -- Dimension: Milestone (STRUCT)\n",
+					"  dim_milestone STRUCT<\n",
+					"    id: BIGINT COMMENT 'Unique milestone ID',\n",
+					"    title: STRING COMMENT 'Milestone title',\n",
+					"    description: STRING COMMENT 'Milestone description',\n",
+					"    state: STRING COMMENT 'State of the milestone (open, closed)',\n",
+					"    closed_issues: BIGINT COMMENT 'Number of closed issues in the milestone',\n",
+					"    open_issues: BIGINT COMMENT 'Number of open issues in the milestone',\n",
+					"    due_on: TIMESTAMP COMMENT 'Milestone deadline (if available)',\n",
+					"    created_at: TIMESTAMP COMMENT 'Timestamp when milestone was created',\n",
+					"    updated_at: TIMESTAMP COMMENT 'Timestamp when milestone was last updated',\n",
+					"    closed_at: TIMESTAMP COMMENT 'Timestamp when milestone was closed'\n",
+					"  > COMMENT 'Details of the milestone associated with the issue',\n",
+					"\n",
+					"  -- Timestamps (Time-Based Features)\n",
+					"  issue_created_at TIMESTAMP COMMENT 'Timestamp when the issue was created',\n",
+					"  issue_closed_at TIMESTAMP COMMENT 'Timestamp when the issue was closed',\n",
+					"  issue_updated_at TIMESTAMP COMMENT 'Timestamp when the issue was last updated',\n",
+					"  event_created_at TIMESTAMP COMMENT 'Timestamp when the event occurred (not real event time)',\n",
+					"\n",
+					"  -- Foreign Key to Issues table\n",
+					"  issue_id BIGINT COMMENT 'Foreign key to Issues table',\n",
+					"\n",
+					"  -- Dimension: Actor (User details, from actor)\n",
+					"  dim_actor STRUCT<\n",
+					"    id: BIGINT COMMENT 'Foreign key to Users table (actor.id)',\n",
+					"    login: STRING COMMENT 'GitHub username for actor'\n",
+					"  > COMMENT 'User details for the actor',\n",
+					"\n",
+					"  -- Dimensions: Organization and Repository Info (merged in fact table)\n",
+					"  dim_org_id BIGINT COMMENT 'Foreign key to Organizations table',\n",
+					"  dim_org_name STRING COMMENT 'Organization name',\n",
+					"  dim_repo_id BIGINT COMMENT 'Foreign key to Repository',\n",
+					"  dim_repo_name STRING COMMENT 'Repository name'\n",
+					")\n",
+					"USING DELTA\n",
+					"PARTITIONED BY (action)\n",
+					"COMMENT 'Fact table for GitHub issue event tracking';\n",
+					""
+				],
+				"execution_count": 1
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"spark.stop()"
+				],
+				"execution_count": 3
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					""
+				]
+			}
+		]
+	}
+}
