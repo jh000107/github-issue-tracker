@@ -15,4 +15,6 @@ Pipeline:
 Approach 2: Use AzCopy to directly store the data into the storage instead of processing through ADF
 - Pros: Cost Reduction
 
-## Data Analysis
+Approach 1 was taken. However, in order to reduce the size, we chose to convert compressed json files into parquet after removing all unnecessary columns.
+
+## Data Processing
