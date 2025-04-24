@@ -1,0 +1,17 @@
+{
+	"name": "Create Exernal Table",
+	"properties": {
+		"content": {
+			"query": "-- Create external table using Delta format\nCREATE EXTERNAL TABLE [dbo].[viz_issues_event]\n(\n    event_id BIGINT,\n    action VARCHAR(50),\n    issue_title NVARCHAR(MAX),\n    issue_body NVARCHAR(MAX),\n    author_association VARCHAR(100),\n    issue_state VARCHAR(50),\n    issue_state_reason VARCHAR(100),\n    dim_issue_creator VARCHAR(MAX),\n    issue_comment_count BIGINT,\n    num_assignees INT,\n    labels VARCHAR(MAX),\n    dim_milestone VARCHAR(MAX),\n    issue_created_at DATETIME2,\n    issue_closed_at DATETIME2,\n    issue_updated_at DATETIME2,\n    event_created_at DATETIME2,\n    dim_issue_id BIGINT,\n    dim_actor VARCHAR(MAX),\n    dim_org_id BIGINT,\n    dim_org_name NVARCHAR(255),\n    dim_repo_id BIGINT,\n    dim_repo_name NVARCHAR(255),\n    event_month VARCHAR(7),\n    issue_resolve_time_days FLOAT,\n    issue_resolve_time_label VARCHAR(100),\n    -- New columns from the ALTER TABLE statement\n    is_bot BIT,\n    issue_title_word_count INT,\n    issue_body_word_count INT,\n    issue_resolve_time_label_sort INT,\n    issue_title_word_count_bins VARCHAR(100),\n    issue_body_word_count_bins VARCHAR(100),\n    issue_title_word_count_bins_sort INT,\n    issue_body_word_count_bins_sort INT\n)\nWITH (\n    LOCATION = '/gold/viz_issues_event',\n    DATA_SOURCE = github_issues_data,\n    FILE_FORMAT = DeltaFormat\n);\n\n\nCREATE EXTERNAL TABLE [dbo].[viz_issues_event_feb2025]\nWITH (\n    LOCATION = '/gold/viz_issues_event/feb2025/',\n    DATA_SOURCE = github_issues_data,\n    FILE_FORMAT = ParquetFormat\n)\nAS \nSELECT * FROM [dbo].[viz_issues_event] \nWHERE event_created_at >= '2025-02-01' AND event_created_at < '2025-03-01';\n\nCREATE EXTERNAL TABLE [dbo].[agg_wordcount]\n    (\n    issue_resolve_time_label VARCHAR(100),\n    word VARCHAR(150),\n    ct BIGINT\n    )\nWITH (\n    LOCATION = '/gold/agg_wordcount',\n    DATA_SOURCE = github_issues_data,\n    FILE_FORMAT = DeltaFormat\n);\n\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "master",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
