@@ -1,0 +1,1032 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"workspaceName": {
+			"type": "string",
+			"metadata": "Workspace name",
+			"defaultValue": "team13-github-realtime-events"
+		},
+		"AzureDataLakeStorageNathan_accountKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accountKey' of 'AzureDataLakeStorageNathan'"
+		},
+		"team13-github-realtime-events-WorkspaceDefaultSqlServer_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'team13-github-realtime-events-WorkspaceDefaultSqlServer'",
+			"defaultValue": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:team13-github-realtime-events.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"AzureDataLakeStorageNathan_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://team13adls.dfs.core.windows.net"
+		},
+		"team13-github-realtime-events-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://team13adls.dfs.core.windows.net"
+		}
+	},
+	"variables": {
+		"workspaceId": "[concat('Microsoft.Synapse/workspaces/', parameters('workspaceName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('workspaceName'), '/AzureDataLakeStorageNathan')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('AzureDataLakeStorageNathan_properties_typeProperties_url')]",
+					"accountKey": {
+						"type": "SecureString",
+						"value": "[parameters('AzureDataLakeStorageNathan_accountKey')]"
+					}
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/team13-github-realtime-events-WorkspaceDefaultSqlServer')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"parameters": {
+					"DBName": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"type": "AzureSqlDW",
+				"typeProperties": {
+					"connectionString": "[parameters('team13-github-realtime-events-WorkspaceDefaultSqlServer_connectionString')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/team13-github-realtime-events-WorkspaceDefaultStorage')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('team13-github-realtime-events-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AutoResolveIntegrationRuntime')]",
+			"type": "Microsoft.Synapse/workspaces/integrationRuntimes",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "Managed",
+				"typeProperties": {
+					"computeProperties": {
+						"location": "AutoResolve",
+						"dataFlowProperties": {
+							"computeType": "General",
+							"coreCount": 8,
+							"timeToLive": 0
+						}
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/WorkspaceSystemIdentity')]",
+			"type": "Microsoft.Synapse/workspaces/credentials",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "ManagedIdentity",
+				"typeProperties": {}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/BronzeToSilverStaging')]",
+			"type": "Microsoft.Synapse/workspaces/sparkJobDefinitions",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"targetBigDataPool": {
+					"referenceName": "team13",
+					"type": "BigDataPoolReference"
+				},
+				"requiredSparkVersion": "3.4",
+				"language": "python",
+				"scanFolder": true,
+				"jobProperties": {
+					"name": "BronzeToSilverStaging",
+					"file": "abfss://github-realtime-issue@team13adls.dfs.core.windows.net/spark-scripts/bronze_to_silver_staging.py",
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "252cd7ee-9cbc-47c5-aa3a-59b1a15d382a",
+						"spark.synapse.context.sjdname": "BronzeToSilverStaging"
+					},
+					"args": [],
+					"jars": [],
+					"pyFiles": [
+						""
+					],
+					"files": [],
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/DDL_Create_GoldTable')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"runAsWorkspaceSystemIdentity": false,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "65584f12-294c-4833-8f7e-c5942b21a718"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"synapse_widget": {
+						"version": "0.1"
+					},
+					"enableDebugMode": false,
+					"language_info": {
+						"name": "python"
+					},
+					"sessionKeepAliveTimeout": 30
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"source": [
+							""
+						],
+						"outputs": []
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/DDL_Create_SilverTable')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"bigDataPool": {
+					"referenceName": "decompressSmall",
+					"type": "BigDataPoolReference"
+				},
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"runAsWorkspaceSystemIdentity": false,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "1b7c64e6-a8ac-437a-b40f-3eb3fb425038"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"synapse_widget": {
+						"version": "0.1"
+					},
+					"enableDebugMode": false,
+					"language_info": {
+						"name": "python"
+					},
+					"a365ComputeOptions": {
+						"id": "/subscriptions/3b608a14-90b7-42d9-82e2-77c947974137/resourceGroups/DS562-Team-13/providers/Microsoft.Synapse/workspaces/team13-github-realtime-events/bigDataPools/decompressSmall",
+						"name": "decompressSmall",
+						"type": "Spark",
+						"endpoint": "https://team13-github-realtime-events.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/decompressSmall",
+						"auth": {
+							"type": "AAD",
+							"authResource": "https://dev.azuresynapse.net",
+							"authHeader": null
+						},
+						"sparkVersion": "3.4",
+						"nodeCount": 10,
+						"cores": 4,
+						"memory": 28,
+						"extraHeader": null
+					},
+					"sessionKeepAliveTimeout": 30
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"CREATE TABLE IF NOT EXISTS delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+							"(\n",
+							"  -- Primary Key & Event Type\n",
+							"  event_id BIGINT COMMENT 'Unique identifier for the event',\n",
+							"  action STRING COMMENT 'Type of issue event (created, closed, reopened)',\n",
+							"\n",
+							"  -- Issue Metadata\n",
+							"  issue_title STRING COMMENT 'Title of the issue',\n",
+							"  issue_body STRING COMMENT 'Detailed description of the issue',\n",
+							"  author_association STRING COMMENT 'Association of the issue creator with the repository',\n",
+							"  issue_state STRING COMMENT 'Current state of the issue (open, closed)',\n",
+							"  issue_state_reason STRING COMMENT 'Reason why the issue was closed, if applicable',\n",
+							"\n",
+							"  -- Dimension: Issue Creator (STRUCT)\n",
+							"  dim_issue_creator STRUCT<\n",
+							"    id: BIGINT COMMENT 'Unique user ID',\n",
+							"    login: STRING COMMENT 'GitHub username of the issue creator',\n",
+							"    is_bot: INT COMMENT '1 if the user is a bot, 0 otherwise'\n",
+							"  > COMMENT 'Details of the issue creator',\n",
+							"\n",
+							"  -- Other Issue Attributes\n",
+							"  issue_comment_count BIGINT COMMENT 'Total number of comments on the issue',\n",
+							"  num_assignees INT COMMENT 'Number of assignees for the issue',\n",
+							"\n",
+							"  -- Labels (Stored as an Array of Structs)\n",
+							"  labels ARRAY<STRUCT<\n",
+							"    color: STRING COMMENT 'Hex color of the label',\n",
+							"    default: BOOLEAN COMMENT 'TRUE if this is a default GitHub label',\n",
+							"    description: STRING COMMENT 'Label description',\n",
+							"    id: BIGINT COMMENT 'Unique label ID',\n",
+							"    name: STRING COMMENT 'Label name',\n",
+							"    node_id: STRING COMMENT 'GraphQL node ID',\n",
+							"    url: STRING COMMENT 'API URL for the label'\n",
+							"  >> COMMENT 'Labels assigned to the issue',\n",
+							"\n",
+							"\n",
+							"  -- Dimension: Milestone (STRUCT)\n",
+							"  dim_milestone STRUCT<\n",
+							"    id: BIGINT COMMENT 'Unique milestone ID',\n",
+							"    title: STRING COMMENT 'Milestone title',\n",
+							"    description: STRING COMMENT 'Milestone description',\n",
+							"    state: STRING COMMENT 'State of the milestone (open, closed)',\n",
+							"    closed_issues: BIGINT COMMENT 'Number of closed issues in the milestone',\n",
+							"    open_issues: BIGINT COMMENT 'Number of open issues in the milestone',\n",
+							"    due_on: TIMESTAMP COMMENT 'Milestone deadline (if available)',\n",
+							"    created_at: TIMESTAMP COMMENT 'Timestamp when milestone was created',\n",
+							"    updated_at: TIMESTAMP COMMENT 'Timestamp when milestone was last updated',\n",
+							"    closed_at: TIMESTAMP COMMENT 'Timestamp when milestone was closed'\n",
+							"  > COMMENT 'Details of the milestone associated with the issue',\n",
+							"\n",
+							"  -- Timestamps (Time-Based Features)\n",
+							"  issue_created_at TIMESTAMP COMMENT 'Timestamp when the issue was created',\n",
+							"  issue_closed_at TIMESTAMP COMMENT 'Timestamp when the issue was closed',\n",
+							"  issue_updated_at TIMESTAMP COMMENT 'Timestamp when the issue was last updated',\n",
+							"  event_created_at TIMESTAMP COMMENT 'Timestamp when the event occurred (not real event time)',\n",
+							"\n",
+							"  -- Foreign Key to Issues table\n",
+							"  issue_id BIGINT COMMENT 'Foreign key to Issues table',\n",
+							"\n",
+							"  -- Dimension: Actor (User details, from actor)\n",
+							"  dim_actor STRUCT<\n",
+							"    id: BIGINT COMMENT 'Foreign key to Users table (actor.id)',\n",
+							"    login: STRING COMMENT 'GitHub username for actor'\n",
+							"  > COMMENT 'User details for the actor',\n",
+							"\n",
+							"  -- Dimensions: Organization and Repository Info (merged in fact table)\n",
+							"  dim_org_id BIGINT COMMENT 'Foreign key to Organizations table',\n",
+							"  dim_org_name STRING COMMENT 'Organization name',\n",
+							"  dim_repo_id BIGINT COMMENT 'Foreign key to Repository',\n",
+							"  dim_repo_name STRING COMMENT 'Repository name'\n",
+							")\n",
+							"USING DELTA\n",
+							"PARTITIONED BY (action)\n",
+							"COMMENT 'Fact table for GitHub issue event tracking';\n",
+							""
+						],
+						"outputs": [],
+						"execution_count": 1
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"spark.stop()"
+						],
+						"outputs": [],
+						"execution_count": 3
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							""
+						],
+						"outputs": []
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/ETL_BronzeToStaging')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"bigDataPool": {
+					"referenceName": "decompressSmall",
+					"type": "BigDataPoolReference"
+				},
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"runAsWorkspaceSystemIdentity": false,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "b812f626-93b8-4e2a-9307-08c629171517"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"synapse_widget": {
+						"version": "0.1"
+					},
+					"enableDebugMode": false,
+					"language_info": {
+						"name": "python"
+					},
+					"a365ComputeOptions": {
+						"id": "/subscriptions/3b608a14-90b7-42d9-82e2-77c947974137/resourceGroups/DS562-Team-13/providers/Microsoft.Synapse/workspaces/team13-github-realtime-events/bigDataPools/decompressSmall",
+						"name": "decompressSmall",
+						"type": "Spark",
+						"endpoint": "https://team13-github-realtime-events.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/decompressSmall",
+						"auth": {
+							"type": "AAD",
+							"authResource": "https://dev.azuresynapse.net",
+							"authHeader": null
+						},
+						"sparkVersion": "3.4",
+						"nodeCount": 10,
+						"cores": 4,
+						"memory": 28,
+						"extraHeader": null
+					},
+					"sessionKeepAliveTimeout": 5
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"source": [
+							"from pyspark.sql.functions import col\n",
+							"from pyspark.sql.functions import to_date\n",
+							"import time\n",
+							"import sys\n",
+							"import logging\n",
+							"from datetime import datetime, timedelta\n",
+							"\n",
+							"# Configure logging to flush immediately in Jupyter\n",
+							"logging.basicConfig(\n",
+							"    level=logging.INFO,\n",
+							"    format=\"%(asctime)s - %(levelname)s - %(message)s\",\n",
+							"    stream=sys.stdout,\n",
+							"    force=True  # Ensures Jupyter respects the logging settings\n",
+							")\n",
+							"\n",
+							"# Set up the configuration for accessing the storage account\n",
+							"storage_account_name = \"team13adls\"\n",
+							"container_name = \"github-realtime-issue\""
+						],
+						"outputs": [],
+						"execution_count": 62
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"def read_github_data(year: int, month: int, day: int):\n",
+							"    \"\"\"\n",
+							"    Reads JSON.gz files for a specific year, month, and day.\n",
+							"    Return: DataFrame containing the JSON data\n",
+							"    \"\"\"\n",
+							"    # Format month and day as two-digit strings\n",
+							"    month_str = f\"{month:02d}\"\n",
+							"    day_str = f\"{day:02d}\"\n",
+							"    \n",
+							"    # Construct the file path using f-string formatting\n",
+							"    file_path = (\n",
+							"        f\"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/\"\n",
+							"        f\"bronze/GH_archive_raw/year={year}/month={month_str}/day={day_str}/*.json.gz\"\n",
+							"    )\n",
+							"    \n",
+							"    # Read JSON files from the constructed path\n",
+							"    df = spark.read.json(file_path)\n",
+							"    return df"
+						],
+						"outputs": [],
+						"execution_count": 63
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"def transform_issues_event(df):\n",
+							"    \"\"\"\n",
+							"    Transforms the raw DataFrame by filtering for IssuesEvent,\n",
+							"    selecting relevant columns, and converting timestamps.\n",
+							"\n",
+							"    :param df: Input DataFrame containing raw data.\n",
+							"    :return: Transformed DataFrame with the selected columns and additional date column.\n",
+							"    \"\"\"\n",
+							"    transformed_df = df.filter(df[\"type\"] == \"IssuesEvent\").select(\n",
+							"        col(\"actor\"),\n",
+							"        col(\"created_at\"),\n",
+							"        col(\"id\").alias(\"event_id\"),\n",
+							"        col(\"org\"),\n",
+							"        col(\"repo\"),\n",
+							"        col(\"payload.action\"),\n",
+							"        col(\"payload.issue\")\n",
+							"    )\n",
+							"\n",
+							"    # Convert created_at to timestamp and create a date column\n",
+							"    transformed_df = transformed_df.withColumn(\"created_at\", col(\"created_at\").cast(\"timestamp\"))\n",
+							"    transformed_df = transformed_df.withColumn(\"date\", to_date(col(\"created_at\")))\n",
+							"    \n",
+							"    return transformed_df"
+						],
+						"outputs": [],
+						"execution_count": 64
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"def load_to_delta_bronze_staging(df):\n",
+							"    \"\"\"\n",
+							"    Loads the transformed DataFrame into a Delta table partitioned by date.\n",
+							"\n",
+							"    :param df: Transformed DataFrame.\n",
+							"    :param output_path: Destination path for the Delta table.\n",
+							"    \"\"\"\n",
+							"    bronze_staging_path = f\"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/bronze/staging/\"\n",
+							"\n",
+							"    df.write.format(\"delta\") \\\n",
+							"        .mode(\"overwrite\") \\\n",
+							"        .option(\"partitionOverwriteMode\", \"dynamic\") \\ \n",
+							"        .option(\"mergeSchema\", \"true\") \\\n",
+							"        .partitionBy(\"date\") \\\n",
+							"        .save(bronze_staging_path)"
+						],
+						"outputs": [],
+						"execution_count": 65
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"def process_day(year:int, month:int, day:int, max_retries=2, sleep_interval=5):\n",
+							"    \"\"\"\n",
+							"    Processes GitHub data for a specific day: reads, transforms, and loads to Delta.\n",
+							"    Retries the processing in case of failure.\n",
+							"\n",
+							"    Return: dict with status info (success or failure and error message if applicable)\n",
+							"    \"\"\"\n",
+							"    status = {\"year\": year, \"month\": month, \"day\": day, \"status\": None, \"error\": None}\n",
+							"    attempt = 0\n",
+							"    \n",
+							"    while attempt < max_retries:\n",
+							"        try:\n",
+							"            logging.info(f\"Attempt {attempt + 1} for processing {year}-{month:02d}-{day:02d}\")\n",
+							"            \n",
+							"            # Read JSON files for the specific day\n",
+							"            raw_df = read_github_data(year, month, day)\n",
+							"            logging.info(\"Data read successfully.\")\n",
+							"            \n",
+							"            # Transform the DataFrame (filter for IssuesEvent, select columns, etc.)\n",
+							"            transformed_df = transform_issues_event(raw_df)\n",
+							"            logging.info(\"Transformation completed successfully.\")\n",
+							"            \n",
+							"            # Load to Delta Bronze Staging\n",
+							"            load_to_delta_bronze_staging(transformed_df)\n",
+							"            logging.info(\"Data loaded into Delta successfully.\")\n",
+							"            \n",
+							"            status[\"status\"] = \"success\"\n",
+							"            return status  # Exit once successful\n",
+							"            \n",
+							"        except Exception as e:\n",
+							"            attempt += 1\n",
+							"            logging.error(f\"Error on attempt {attempt} for {year}-{month:02d}-{day:02d}: {e}\")\n",
+							"            if attempt < max_retries:\n",
+							"                logging.info(f\"Retrying after {sleep_interval} seconds...\")\n",
+							"                time.sleep(sleep_interval)\n",
+							"            else:\n",
+							"                status[\"status\"] = \"failed\"\n",
+							"                status[\"error\"] = str(e)\n",
+							"    return status"
+						],
+						"outputs": [],
+						"execution_count": 66
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"def process_date_range(start_date: str, end_date: str, max_retries=2, sleep_interval=5):\n",
+							"    \"\"\"\n",
+							"    Processes GitHub data for a given date range: reads, transforms, and loads data to Delta.\n",
+							"    The range includes both start_date and end_date. It logs and prints the status for each day as it runs.\n",
+							"    \n",
+							"    :param start_date: string in 'YYYY-MM-DD' format for the starting date.\n",
+							"    :param end_date: string in 'YYYY-MM-DD' format for the ending date. (inclusive)\n",
+							"    \"\"\"\n",
+							"    # Convert string dates to datetime.date\n",
+							"    start_date = datetime.strptime(start_date, \"%Y-%m-%d\").date()\n",
+							"    end_date = datetime.strptime(end_date, \"%Y-%m-%d\").date()\n",
+							"\n",
+							"    current_date = start_date\n",
+							"    while current_date <= end_date:\n",
+							"        status = process_day(current_date.year, current_date.month, current_date.day, max_retries, sleep_interval)\n",
+							"        message = f\"Processed {current_date}: {status['status']}\"\n",
+							"        if status[\"status\"] == \"success\":\n",
+							"            logging.info(message)\n",
+							"        else:\n",
+							"            logging.error(message)\n",
+							"        print(message, flush=True)\n",
+							"        sys.stdout.flush()\n",
+							"        current_date += timedelta(days=1)\n",
+							""
+						],
+						"outputs": [],
+						"execution_count": 67
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"process_date_range(\"2024-03-28\",\"2024-04-30\")"
+						],
+						"outputs": [],
+						"execution_count": 85
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"DESCRIBE HISTORY delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/staging/`;"
+						],
+						"outputs": [],
+						"execution_count": 104
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"from delta.tables import DeltaTable\n",
+							"recovered_path = \"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/recovered_staging/\"\n",
+							"\n",
+							"# Ensure the recovered table exists with partitioning by \"date\"\n",
+							"try:\n",
+							"    recovered_dt = DeltaTable.forPath(spark, recovered_path)\n",
+							"except Exception:\n",
+							"    empty_df = spark.read.format(\"delta\").load(bronze_staging_path).limit(0)\n",
+							"    empty_df.write.format(\"delta\") \\\n",
+							"        .mode(\"overwrite\") \\\n",
+							"        .partitionBy(\"date\") \\\n",
+							"        .save(recovered_path)\n",
+							"    recovered_dt = DeltaTable.forPath(spark, recovered_path)"
+						],
+						"outputs": [],
+						"execution_count": 106
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"# Get available versions from Delta history.\n",
+							"history_df = spark.sql(f\"DESCRIBE HISTORY delta.`{bronze_staging_path}`\")\n",
+							"versions = history_df.select(\"version\").distinct().rdd.flatMap(lambda x: x).collect()\n",
+							"\n",
+							"# Process each version: each version is assumed to contain data for one date (or the partitions you want to update).\n",
+							"for v in versions:\n",
+							"    try:\n",
+							"        print(f\"Processing version: {v}\")\n",
+							"        df_version = spark.read.format(\"delta\").option(\"versionAsOf\", v).load(bronze_staging_path)\n",
+							"        \n",
+							"        # Write using dynamic partition overwrite.\n",
+							"        df_version.write.format(\"delta\") \\\n",
+							"            .mode(\"overwrite\") \\\n",
+							"            .option(\"partitionOverwriteMode\", \"dynamic\") \\\n",
+							"            .save(recovered_path)\n",
+							"        \n",
+							"        print(f\"Version {v} processed successfully.\")\n",
+							"    except Exception as e:\n",
+							"        print(f\"Skipping version {v} due to error: {e}\")\n",
+							"\n",
+							"print(\"Recovery complete!\")"
+						],
+						"outputs": [],
+						"execution_count": 109
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"DESCRIBE DETAIL delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/recovered_staging/`;"
+						],
+						"outputs": [],
+						"execution_count": 110
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"spark.stop()"
+						],
+						"outputs": [],
+						"execution_count": 111
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							""
+						],
+						"outputs": []
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/ETL_StagingToSilver')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"bigDataPool": {
+					"referenceName": "decompressSmall",
+					"type": "BigDataPoolReference"
+				},
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"runAsWorkspaceSystemIdentity": false,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "fa0b6c32-a95d-43b4-98ca-fd108c6a912c"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"synapse_widget": {
+						"version": "0.1"
+					},
+					"enableDebugMode": false,
+					"language_info": {
+						"name": "python"
+					},
+					"a365ComputeOptions": {
+						"id": "/subscriptions/3b608a14-90b7-42d9-82e2-77c947974137/resourceGroups/DS562-Team-13/providers/Microsoft.Synapse/workspaces/team13-github-realtime-events/bigDataPools/decompressSmall",
+						"name": "decompressSmall",
+						"type": "Spark",
+						"endpoint": "https://team13-github-realtime-events.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/decompressSmall",
+						"auth": {
+							"type": "AAD",
+							"authResource": "https://dev.azuresynapse.net",
+							"authHeader": null
+						},
+						"sparkVersion": "3.4",
+						"nodeCount": 10,
+						"cores": 4,
+						"memory": 28,
+						"extraHeader": null
+					},
+					"sessionKeepAliveTimeout": 30
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"source": [
+							"# Load the recovered staging data from Delta into a DataFrame\n",
+							"source_df = spark.read.format(\"delta\").load(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/recovered_staging/\").cache()\n",
+							"source_df.show(5)  "
+						],
+						"outputs": [],
+						"execution_count": 2
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"INSERT OVERWRITE TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+							"SELECT\n",
+							"  CAST(event_id AS BIGINT) AS event_id,\n",
+							"  action,\n",
+							"  \n",
+							"  -- Issue Features\n",
+							"  issue.title AS issue_title,\n",
+							"  issue.body AS issue_body,\n",
+							"  issue.author_association,\n",
+							"  issue.state AS issue_state,\n",
+							"  issue.state_reason AS issue_state_reason,\n",
+							"  \n",
+							"  -- Issue Creator Struct (dimension)\n",
+							"  named_struct(\n",
+							"    'id', CAST(issue.user.id AS BIGINT),\n",
+							"    'login', issue.user.login,\n",
+							"    'is_bot', CASE WHEN issue.user.type != 'Bot' THEN 0 ELSE 1 END\n",
+							"  ) AS dim_issue_creator,\n",
+							"  \n",
+							"  -- Other Issue Attributes\n",
+							"  CAST(issue.comments AS BIGINT) AS issue_comment_count,\n",
+							"  CASE\n",
+							"    WHEN issue.assignee IS NOT NULL THEN GREATEST(SIZE(issue.assignees), 1)\n",
+							"    ELSE SIZE(issue.assignees)\n",
+							"  END AS num_assignees,\n",
+							"  \n",
+							"  -- Labels\n",
+							"  issue.labels AS labels,\n",
+							"  \n",
+							"  -- Milestone Struct (dimension)\n",
+							"  CASE\n",
+							"    WHEN issue.milestone IS NOT NULL THEN named_struct(\n",
+							"      'id', CAST(issue.milestone.id AS BIGINT),\n",
+							"      'title', issue.milestone.title,\n",
+							"      'description', issue.milestone.description,\n",
+							"      'state', issue.milestone.state,\n",
+							"      'closed_issues', CAST(issue.milestone.closed_issues AS BIGINT),\n",
+							"      'open_issues', CAST(issue.milestone.open_issues AS BIGINT),\n",
+							"      'due_on', CAST(issue.milestone.due_on AS TIMESTAMP),\n",
+							"      'created_at', CAST(issue.milestone.created_at AS TIMESTAMP),\n",
+							"      'updated_at', CAST(issue.milestone.updated_at AS TIMESTAMP),\n",
+							"      'closed_at', CAST(issue.milestone.closed_at AS TIMESTAMP)\n",
+							"    )\n",
+							"    ELSE NULL\n",
+							"  END AS dim_milestone,\n",
+							"  \n",
+							"  -- Timestamps\n",
+							"  CAST(issue.created_at AS TIMESTAMP) AS issue_created_at,\n",
+							"  CAST(issue.closed_at AS TIMESTAMP) AS issue_closed_at,\n",
+							"  CAST(issue.updated_at AS TIMESTAMP) AS issue_updated_at,\n",
+							"  CAST(created_at AS TIMESTAMP) AS event_created_at,\n",
+							"  \n",
+							"  -- Foreign Keys & Dimension Info\n",
+							"  CAST(issue.id AS BIGINT) AS dim_issue_id,\n",
+							"  \n",
+							"  -- Combine actor.id and actor.login into a struct for dim_actor\n",
+							"  named_struct(\n",
+							"    'id', CAST(actor.id AS BIGINT),\n",
+							"    'login', actor.login\n",
+							"  ) AS dim_actor,\n",
+							"  \n",
+							"  CAST(org.id AS BIGINT) AS dim_org_id,\n",
+							"  org.login AS dim_org_name,\n",
+							"  CAST(repo.id AS BIGINT) AS dim_repo_id,\n",
+							"  repo.name AS dim_repo_name\n",
+							"FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/bronze/recovered_staging/`;"
+						],
+						"outputs": [],
+						"execution_count": 30
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+							"where action = 'opened'"
+						],
+						"outputs": [],
+						"execution_count": 31
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+							"where action = 'closed'"
+						],
+						"outputs": [],
+						"execution_count": 32
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+							"where action = 'reopened'"
+						],
+						"outputs": [],
+						"execution_count": 33
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "sparksql"
+							},
+							"collapsed": false
+						},
+						"source": [
+							"%%sql\n",
+							"select count(*) from delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event`\n",
+							"where issue_closed_at is not null"
+						],
+						"outputs": [],
+						"execution_count": 34
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							""
+						],
+						"outputs": []
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/team13')]",
+			"type": "Microsoft.Synapse/workspaces/bigDataPools",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"autoPause": {
+					"enabled": true,
+					"delayInMinutes": 15
+				},
+				"autoScale": {
+					"enabled": true,
+					"maxNodeCount": 6,
+					"minNodeCount": 3
+				},
+				"nodeCount": 0,
+				"nodeSize": "Small",
+				"nodeSizeFamily": "MemoryOptimized",
+				"sparkVersion": "3.4",
+				"isComputeIsolationEnabled": false,
+				"sessionLevelPackagesEnabled": true,
+				"annotations": []
+			},
+			"dependsOn": [],
+			"location": "eastus2"
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/HeavyOperations')]",
+			"type": "Microsoft.Synapse/workspaces/bigDataPools",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"autoPause": {
+					"enabled": true,
+					"delayInMinutes": 15
+				},
+				"autoScale": {
+					"enabled": true,
+					"maxNodeCount": 10,
+					"minNodeCount": 3
+				},
+				"nodeCount": 10,
+				"nodeSize": "Medium",
+				"nodeSizeFamily": "MemoryOptimized",
+				"sparkVersion": "3.4",
+				"isComputeIsolationEnabled": false,
+				"sessionLevelPackagesEnabled": false,
+				"annotations": []
+			},
+			"dependsOn": [],
+			"location": "eastus2"
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/decompressSmall')]",
+			"type": "Microsoft.Synapse/workspaces/bigDataPools",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"autoPause": {
+					"enabled": true,
+					"delayInMinutes": 15
+				},
+				"autoScale": {
+					"enabled": true,
+					"maxNodeCount": 10,
+					"minNodeCount": 3
+				},
+				"nodeCount": 10,
+				"nodeSize": "Small",
+				"nodeSizeFamily": "MemoryOptimized",
+				"sparkVersion": "3.4",
+				"isComputeIsolationEnabled": false,
+				"sessionLevelPackagesEnabled": false,
+				"annotations": []
+			},
+			"dependsOn": [],
+			"location": "eastus2"
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/github_issues_db')]",
+			"type": "Microsoft.Synapse/workspaces/sqlPools",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"collation": "SQL_Latin1_General_CP1_CI_AS",
+				"maxSizeBytes": 263882790666240,
+				"annotations": []
+			},
+			"dependsOn": [],
+			"location": "eastus2"
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/Create Exernal Table')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "-- Create external table using Delta format\nCREATE EXTERNAL TABLE [dbo].[viz_issues_event]\n(\n    event_id BIGINT,\n    action VARCHAR(50),\n    issue_title NVARCHAR(MAX),\n    issue_body NVARCHAR(MAX),\n    author_association VARCHAR(100),\n    issue_state VARCHAR(50),\n    issue_state_reason VARCHAR(100),\n    dim_issue_creator VARCHAR(MAX),\n    issue_comment_count BIGINT,\n    num_assignees INT,\n    labels VARCHAR(MAX),\n    dim_milestone VARCHAR(MAX),\n    issue_created_at DATETIME2,\n    issue_closed_at DATETIME2,\n    issue_updated_at DATETIME2,\n    event_created_at DATETIME2,\n    dim_issue_id BIGINT,\n    dim_actor VARCHAR(MAX),\n    dim_org_id BIGINT,\n    dim_org_name NVARCHAR(255),\n    dim_repo_id BIGINT,\n    dim_repo_name NVARCHAR(255),\n    event_month VARCHAR(7),\n    issue_resolve_time_days FLOAT,\n    issue_resolve_time_label VARCHAR(100),\n    -- New columns from the ALTER TABLE statement\n    is_bot BIT,\n    issue_title_word_count INT,\n    issue_body_word_count INT,\n    issue_resolve_time_label_sort INT,\n    issue_title_word_count_bins VARCHAR(100),\n    issue_body_word_count_bins VARCHAR(100),\n    issue_title_word_count_bins_sort INT,\n    issue_body_word_count_bins_sort INT\n)\nWITH (\n    LOCATION = '/gold/viz_issues_event',\n    DATA_SOURCE = github_issues_data,\n    FILE_FORMAT = DeltaFormat\n);\n\n\nCREATE EXTERNAL TABLE [dbo].[viz_issues_event_feb2025]\nWITH (\n    LOCATION = '/gold/viz_issues_event/feb2025/',\n    DATA_SOURCE = github_issues_data,\n    FILE_FORMAT = ParquetFormat\n)\nAS \nSELECT * FROM [dbo].[viz_issues_event] \nWHERE event_created_at >= '2025-02-01' AND event_created_at < '2025-03-01';\n\nCREATE EXTERNAL TABLE [dbo].[agg_wordcount]\n    (\n    issue_resolve_time_label VARCHAR(100),\n    word VARCHAR(150),\n    ct BIGINT\n    )\nWITH (\n    LOCATION = '/gold/agg_wordcount',\n    DATA_SOURCE = github_issues_data,\n    FILE_FORMAT = DeltaFormat\n);\n\n\n\n",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "master",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		}
+	]
+}
