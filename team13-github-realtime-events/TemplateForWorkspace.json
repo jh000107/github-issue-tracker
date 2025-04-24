@@ -1027,6 +1027,575 @@
 				"type": "SqlQuery"
 			},
 			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/ETL_SilverToGoldViz')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "f0870173-fa20-45ce-8bc0-2494fb27fd70"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"enableDebugMode": false,
+					"kernelspec": {
+						"name": "synapse_pyspark",
+						"display_name": "Synapse PySpark"
+					},
+					"language_info": {
+						"name": "python"
+					},
+					"sessionKeepAliveTimeout": 30
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"from pyspark.sql import functions as F\n",
+							"from pyspark.sql.types import StringType\n",
+							"from pyspark.sql.functions import count, date_format, lit, col, coalesce,udf,when, col,expr\n",
+							"from pyspark.sql.types import StringType, ArrayType\n",
+							"from pyspark.ml.feature import StopWordsRemover, Tokenizer"
+						],
+						"outputs": [],
+						"execution_count": 29
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"f = 'abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event'\n",
+							"dest = 'abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/'\n",
+							"\n",
+							"df = spark.read.format(\"delta\").load(f)"
+						],
+						"outputs": [],
+						"execution_count": 30
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"df = df.withColumn(\"issue_resolve_time_days\", \n",
+							"                    F.expr(\"((cast(issue_closed_at as long) - cast(issue_created_at as long)) / 86400)\"))\n",
+							"\n",
+							"# Step 4: Add a resolution time label column\n",
+							"df = df.withColumn(\n",
+							"    \"issue_resolve_time_label\",\n",
+							"    F.expr(\"\"\"\n",
+							"        CASE \n",
+							"            WHEN issue_resolve_time_days < (1 / 24) THEN '<1 hour'\n",
+							"            WHEN issue_resolve_time_days >= (1 / 24) AND issue_resolve_time_days < (6 / 24) THEN '1-6 hours'\n",
+							"            WHEN issue_resolve_time_days >= (6 / 24) AND issue_resolve_time_days < 1 THEN '6-24 hours'\n",
+							"            WHEN issue_resolve_time_days >= 1 AND issue_resolve_time_days < 7 THEN '1-7 days'\n",
+							"            WHEN issue_resolve_time_days >= 7 AND issue_resolve_time_days < 28 THEN '1-4 weeks'\n",
+							"            WHEN issue_resolve_time_days >= 28 AND issue_resolve_time_days < 180 THEN '1-6 months'\n",
+							"            WHEN issue_resolve_time_days >= 180 AND issue_resolve_time_days < 365 THEN '6 months - 1 year'\n",
+							"            WHEN issue_resolve_time_days >= 365 THEN '>1 year'\n",
+							"            ELSE NULL\n",
+							"        END\n",
+							"    \"\"\"))"
+						],
+						"outputs": [],
+						"execution_count": 31
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"def clean_text(df, text_column, output_column):\n",
+							"    \"\"\"\n",
+							"    Comprehensive text cleaning function optimized for word clouds.\n",
+							"    Parameters:\n",
+							"    -----------\n",
+							"    df : DataFrame\n",
+							"        Input Spark DataFrame\n",
+							"    text_column : str\n",
+							"        Name of the column containing text to clean\n",
+							"    output_column : str\n",
+							"        Name of the column to store cleaned text\n",
+							"    Returns:\n",
+							"    --------\n",
+							"    DataFrame\n",
+							"        DataFrame with cleaned text optimized for word clouds\n",
+							"    \"\"\"\n",
+							"    df = df.withColumn(text_column,\n",
+							"                     F.when(F.col(text_column).isNull(), \"\")\n",
+							"                     .otherwise(F.col(text_column)))\n",
+							"    \n",
+							"    # Step 1: Basic cleaning\n",
+							"    cleaned = F.lower(F.col(text_column))\n",
+							"    cleaned = F.regexp_replace(cleaned, r'http\\S+|www\\S+|https\\S+', '')  # Remove URLs\n",
+							"    cleaned = F.regexp_replace(cleaned, r'<.*?>', '')  # Remove HTML tags\n",
+							"    # Remove emojis (Unicode ranges for common emojis)\n",
+							"    cleaned = F.regexp_replace(cleaned, r'[^\\x00-\\x7F]+', '')\n",
+							"    # Remove numbers\n",
+							"    cleaned = F.regexp_replace(cleaned, r'\\b\\d+\\b', '')\n",
+							"    # Remove punctuation\n",
+							"    cleaned = F.regexp_replace(cleaned, r'[^\\w\\s]', '')\n",
+							"    # Remove special characters\n",
+							"    cleaned = F.regexp_replace(cleaned, r'[^a-zA-Z0-9\\s]', '')\n",
+							"    # Clean up whitespace\n",
+							"    cleaned = F.regexp_replace(cleaned, r'[\\r\\n]+', ' ')  # Replace newlines\n",
+							"    cleaned = F.regexp_replace(cleaned, r'\\s+', ' ')  # Collapse multiple spaces\n",
+							"    cleaned = F.trim(cleaned)  # Trim whitespace\n",
+							"    \n",
+							"    # Create intermediate DataFrame with basic cleaned text\n",
+							"    df_clean = df.withColumn(\"_cleaned_text\", cleaned)\n",
+							"    \n",
+							"    # Step 2: Tokenization\n",
+							"    tokenizer = Tokenizer(inputCol=\"_cleaned_text\", outputCol=\"_words\")\n",
+							"    df_tokenized = tokenizer.transform(df_clean)\n",
+							"    \n",
+							"    # Step 3: Remove stopwords\n",
+							"    # Get default stopwords\n",
+							"    stopwords = StopWordsRemover.loadDefaultStopWords(\"english\")\n",
+							"    # Add some common custom stopwords often irrelevant for word clouds\n",
+							"    custom_stopwords = [\"said\", \"also\", \"would\", \"could\", \"should\", \"may\", \"might\", \"must\",\n",
+							"                      \"one\", \"two\", \"three\", \"first\", \"second\", \"third\", \"like\", \"just\",\n",
+							"                      \"going\", \"get\", \"got\", \"getting\", \"even\", \"really\", \"much\",\n",
+							"                      \"many\", \"lot\", \"well\", \"back\", \"know\", \"think\", \"see\", \"say\", \"says\",\n",
+							"                      \"way\", \"make\", \"made\", \"making\", \"around\", \"next\", \"last\", \"still\"]\n",
+							"    stopwords.extend(custom_stopwords)\n",
+							"    \n",
+							"    # Remove stopwords\n",
+							"    remover = StopWordsRemover(inputCol=\"_words\", outputCol=\"_filtered_words\", stopWords=stopwords)\n",
+							"    df_filtered = remover.transform(df_tokenized)\n",
+							"    \n",
+							"    # Step 5: Join words back together for the final cleaned text \n",
+							"    df_result = df_filtered.withColumn(output_column, F.concat_ws(\" \", \"_filtered_words\"))\n",
+							"    \n",
+							"    # Clean up intermediate columns\n",
+							"    df_final = df_result.drop(\"_cleaned_text\", \"_words\", \"_filtered_words\")\n",
+							"    \n",
+							"    return df_final"
+						],
+						"outputs": [],
+						"execution_count": 37
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"df_title_cleaned = clean_text(df, 'issue_title','issue_title')\n",
+							"df_all_text_cleaned = clean_text(df_title_cleaned, 'issue_body','issue_body')\n",
+							"df_all_text_cleaned.show()"
+						],
+						"outputs": [],
+						"execution_count": 38
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"df_all_text_cleaned.write \\\n",
+							"    .format(\"delta\") \\\n",
+							"    .partitionBy(\"event_month\") \\\n",
+							"    .mode(\"overwrite\") \\\n",
+							"    .save(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event\")"
+						],
+						"outputs": [],
+						"execution_count": 40
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"# Create a combined table with a dimension column, handling nulls\n",
+							"repo_counts = (df\n",
+							"    .filter(col(\"dim_repo_name\").isNotNull())  # Filter out null repos\n",
+							"    .groupBy(\"dim_repo_name\", 'event_month')\n",
+							"    .agg(count(\"*\").alias(\"issue_count\"))\n",
+							"    .withColumn(\"dimension_type\", lit(\"Repository\"))\n",
+							"    .withColumnRenamed(\"dim_repo_name\", \"dimension_name\"))\n",
+							"\n",
+							"org_counts = (df\n",
+							"    .filter(col(\"dim_org_name\").isNotNull())\n",
+							"    .groupBy(\"dim_org_name\", 'event_month')\n",
+							"    .agg(count(\"*\").alias(\"issue_count\"))\n",
+							"    .withColumn(\"dimension_type\", lit(\"Organization\"))\n",
+							"    .withColumnRenamed(\"dim_org_name\", \"dimension_name\"))\n",
+							"\n",
+							"# Union the tables\n",
+							"combined_counts = repo_counts.union(org_counts)\n",
+							"combined_counts.show()"
+						],
+						"outputs": [],
+						"execution_count": 41
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"combined_counts.write \\\n",
+							"    .format(\"delta\") \\\n",
+							"    .mode(\"overwrite\") \\\n",
+							"    .save(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/agg_org&repo_issue_count\")"
+						],
+						"outputs": [],
+						"execution_count": null
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"monthly_issue_actions = df.groupBy(date_format(\"event_created_at\", \"yyyy-MM\").alias(\"year_month\")).agg(\n",
+							"    count(when(col(\"action\") == \"opened\", 1)).alias(\"opened_count\"),\n",
+							"    count(when(col(\"action\") == \"closed\", 1)).alias(\"closed_count\"),\n",
+							"    count(when(col(\"action\") == \"reopened\", 1)).alias(\"reopened_count\")\n",
+							").orderBy(\"year_month\")\n",
+							"\n",
+							"monthly_issue_actions.show()"
+						],
+						"outputs": [],
+						"execution_count": 42
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"monthly_issue_actions.write \\\n",
+							"    .format(\"delta\") \\\n",
+							"    .mode(\"overwrite\") \\\n",
+							"    .save(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/agg_monthly_issue_actions\")"
+						],
+						"outputs": [],
+						"execution_count": null
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"spark.stop()"
+						],
+						"outputs": [],
+						"execution_count": 43
+					},
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							""
+						],
+						"outputs": [],
+						"execution_count": null
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/Update Delta gold for viz')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "c7a9fa33-824e-4436-917c-1dc7094c0054"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"enableDebugMode": false,
+					"kernelspec": {
+						"name": "synapse_sparksql",
+						"display_name": "sql"
+					},
+					"language_info": {
+						"name": "sql"
+					},
+					"sessionKeepAliveTimeout": 30
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {},
+							"collapsed": false
+						},
+						"source": [
+							"SELECT * FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"limit 100"
+						],
+						"outputs": [],
+						"execution_count": 5
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"ALTER TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event` \n",
+							"ADD COLUMNS (is_bot BOOLEAN)"
+						],
+						"outputs": [],
+						"execution_count": 7
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"SET is_bot = CASE \n",
+							"                WHEN dim_issue_creator.is_bot = 1 then TRUE\n",
+							"                ELSE FALSE\n",
+							"            END "
+						],
+						"outputs": [],
+						"execution_count": 9
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"ALTER TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event` \n",
+							"ADD COLUMNS (issue_title_word_count INT,issue_body_word_count INT)"
+						],
+						"outputs": [],
+						"execution_count": 10
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"SET issue_title_word_count = CASE\n",
+							"    WHEN issue_title = '' THEN 0\n",
+							"    ELSE SIZE(array_remove(SPLIT(issue_title, ' '), ''))\n",
+							"    END,\n",
+							"    issue_body_word_count = CASE\n",
+							"    WHEN issue_body = '' THEN 0\n",
+							"    ELSE SIZE(array_remove(SPLIT(issue_body, ' '), ''))\n",
+							"    END"
+						],
+						"outputs": [],
+						"execution_count": 12
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"ALTER TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event` \n",
+							"ADD COLUMNS (\n",
+							"    issue_resolve_time_label_sort INT,\n",
+							"    issue_title_word_count_bins STRING,\n",
+							"    issue_body_word_count_bins STRING,\n",
+							"    issue_title_word_count_bins_sort INT,\n",
+							"    issue_body_word_count_bins_sort INT\n",
+							")"
+						],
+						"outputs": [],
+						"execution_count": 13
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"SET issue_resolve_time_label_sort = CASE\n",
+							"    WHEN issue_resolve_time_label = '<1 hour' THEN 1\n",
+							"    WHEN issue_resolve_time_label = '1-6 hours' THEN 2\n",
+							"    WHEN issue_resolve_time_label = '6-24 hours' THEN 3\n",
+							"    WHEN issue_resolve_time_label = '1-7 days' THEN 4\n",
+							"    WHEN issue_resolve_time_label = '1-4 weeks' THEN 5\n",
+							"    WHEN issue_resolve_time_label = '1-6 months' THEN 6\n",
+							"    WHEN issue_resolve_time_label = '6 months - 1 year' THEN 7\n",
+							"    WHEN issue_resolve_time_label = '>1 year' THEN 8\n",
+							"    ELSE NULL\n",
+							"END,\n",
+							"issue_title_word_count_bins = CASE\n",
+							"    WHEN issue_title_word_count = 0 THEN 'Empty (0)'\n",
+							"    WHEN issue_title_word_count BETWEEN 1 AND 2 THEN 'Very Short (1-2)'\n",
+							"    WHEN issue_title_word_count BETWEEN 3 AND 4 THEN 'Short (3-4)'\n",
+							"    WHEN issue_title_word_count BETWEEN 5 AND 6 THEN 'Medium (5-6)'\n",
+							"    WHEN issue_title_word_count BETWEEN 7 AND 10 THEN 'Long (7-10)'\n",
+							"    WHEN issue_title_word_count >= 11 THEN 'Very Long (11+)'\n",
+							"    ELSE NULL\n",
+							"END,\n",
+							"issue_body_word_count_bins = CASE\n",
+							"    WHEN issue_body_word_count = 0 THEN 'Empty (0)'\n",
+							"    WHEN issue_body_word_count BETWEEN 1 AND 10 THEN 'Very Short (1-10)'\n",
+							"    WHEN issue_body_word_count BETWEEN 11 AND 25 THEN 'Short (11-25)'\n",
+							"    WHEN issue_body_word_count BETWEEN 26 AND 60 THEN 'Medium (26-60)'\n",
+							"    WHEN issue_body_word_count BETWEEN 61 AND 150 THEN 'Long (61-150)'\n",
+							"    WHEN issue_body_word_count >= 151 THEN 'Very Long (151+)'\n",
+							"    ELSE NULL\n",
+							"END"
+						],
+						"outputs": [],
+						"execution_count": 14
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"SET issue_title_word_count_bins_sort = CASE\n",
+							"    WHEN issue_title_word_count = 0 THEN 0\n",
+							"    WHEN issue_title_word_count BETWEEN 1 AND 2 THEN 1\n",
+							"    WHEN issue_title_word_count BETWEEN 3 AND 4 THEN 2\n",
+							"    WHEN issue_title_word_count BETWEEN 5 AND 6 THEN 3\n",
+							"    WHEN issue_title_word_count BETWEEN 7 AND 10 THEN 4\n",
+							"    WHEN issue_title_word_count >= 11 THEN 5\n",
+							"    ELSE NULL\n",
+							"END,\n",
+							"issue_body_word_count_bins_sort = CASE\n",
+							"    WHEN issue_body_word_count = 0 THEN 0\n",
+							"    WHEN issue_body_word_count BETWEEN 1 AND 10 THEN 1\n",
+							"    WHEN issue_body_word_count BETWEEN 11 AND 25 THEN 2\n",
+							"    WHEN issue_body_word_count BETWEEN 26 AND 60 THEN 3\n",
+							"    WHEN issue_body_word_count BETWEEN 61 AND 150 THEN 4\n",
+							"    WHEN issue_body_word_count >= 151 THEN 5\n",
+							"    ELSE NULL\n",
+							"END"
+						],
+						"outputs": [],
+						"execution_count": 15
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"collapsed": false
+						},
+						"source": [
+							"SELECT * FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"limit 5"
+						],
+						"outputs": [],
+						"execution_count": 16
+					},
+					{
+						"cell_type": "code",
+						"metadata": {
+							"microsoft": {
+								"language": "python"
+							}
+						},
+						"source": [
+							"%%pyspark\n",
+							"spark.stop()"
+						],
+						"outputs": [],
+						"execution_count": 18
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/Gold agg word count for viz')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"sessionProperties": {
+					"driverMemory": "28g",
+					"driverCores": 4,
+					"executorMemory": "28g",
+					"executorCores": 4,
+					"numExecutors": 2,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2",
+						"spark.autotune.trackingId": "b8949e94-5281-47db-adb2-35a54ead58b2"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"enableDebugMode": false,
+					"kernelspec": {
+						"name": "synapse_pyspark",
+						"display_name": "python"
+					},
+					"language_info": {
+						"name": "python"
+					},
+					"sessionKeepAliveTimeout": 30
+				},
+				"cells": [
+					{
+						"cell_type": "code",
+						"metadata": {},
+						"source": [
+							"CREATE TABLE IF NOT EXISTS delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/agg_wordcount`\n",
+							"USING DELTA\n",
+							"COMMENT 'Aggrated word count for different labels'\n",
+							"AS (\n",
+							"  WITH word_array AS (\n",
+							"    SELECT\n",
+							"      issue_resolve_time_label,\n",
+							"      SPLIT(issue_title, ' ') AS word_arr\n",
+							"    FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+							"    WHERE issue_resolve_time_label IS NOT NULL\n",
+							"  ),\n",
+							"  all_words as (\n",
+							"    SELECT\n",
+							"      issue_resolve_time_label,\n",
+							"      word,\n",
+							"      COUNT(word) AS ct\n",
+							"    FROM word_array\n",
+							"    LATERAL VIEW EXPLODE(word_arr) AS word\n",
+							"    GROUP BY issue_resolve_time_label, word\n",
+							"  )\n",
+							"  SELECT\n",
+							"    issue_resolve_time_label,\n",
+							"    word,\n",
+							"    ct\n",
+							"  FROM (\n",
+							"    SELECT\n",
+							"      *,\n",
+							"      ROW_NUMBER() OVER (PARTITION BY issue_resolve_time_label ORDER BY ct DESC) AS rk\n",
+							"    FROM all_words\n",
+							"  ) ranked\n",
+							"  WHERE rk <= 1000\n",
+							"  ORDER BY 1,3 DESC \n",
+							")"
+						],
+						"outputs": [],
+						"execution_count": null
+					}
+				]
+			},
+			"dependsOn": []
 		}
 	]
 }
