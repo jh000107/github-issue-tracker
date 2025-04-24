@@ -1,0 +1,243 @@
+{
+	"name": "ETL_SilverToGoldViz",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "4f3312eb-5464-4d00-b2be-40aeec6a21a5"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_pyspark",
+				"display_name": "Synapse PySpark"
+			},
+			"language_info": {
+				"name": "python"
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql import functions as F\n",
+					"from pyspark.sql.types import StringType\n",
+					"from pyspark.sql.functions import count, date_format, lit, col, coalesce,udf,when, col,expr\n",
+					"from pyspark.sql.types import StringType, ArrayType\n",
+					"from pyspark.ml.feature import StopWordsRemover, Tokenizer"
+				],
+				"execution_count": 29
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"f = 'abfss://github-realtime-issue@team13adls.dfs.core.windows.net/silver/fct_issue_event'\n",
+					"dest = 'abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/'\n",
+					"\n",
+					"df = spark.read.format(\"delta\").load(f)"
+				],
+				"execution_count": 30
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df = df.withColumn(\"issue_resolve_time_days\", \n",
+					"                    F.expr(\"((cast(issue_closed_at as long) - cast(issue_created_at as long)) / 86400)\"))\n",
+					"\n",
+					"# Step 4: Add a resolution time label column\n",
+					"df = df.withColumn(\n",
+					"    \"issue_resolve_time_label\",\n",
+					"    F.expr(\"\"\"\n",
+					"        CASE \n",
+					"            WHEN issue_resolve_time_days < (1 / 24) THEN '<1 hour'\n",
+					"            WHEN issue_resolve_time_days >= (1 / 24) AND issue_resolve_time_days < (6 / 24) THEN '1-6 hours'\n",
+					"            WHEN issue_resolve_time_days >= (6 / 24) AND issue_resolve_time_days < 1 THEN '6-24 hours'\n",
+					"            WHEN issue_resolve_time_days >= 1 AND issue_resolve_time_days < 7 THEN '1-7 days'\n",
+					"            WHEN issue_resolve_time_days >= 7 AND issue_resolve_time_days < 28 THEN '1-4 weeks'\n",
+					"            WHEN issue_resolve_time_days >= 28 AND issue_resolve_time_days < 180 THEN '1-6 months'\n",
+					"            WHEN issue_resolve_time_days >= 180 AND issue_resolve_time_days < 365 THEN '6 months - 1 year'\n",
+					"            WHEN issue_resolve_time_days >= 365 THEN '>1 year'\n",
+					"            ELSE NULL\n",
+					"        END\n",
+					"    \"\"\"))"
+				],
+				"execution_count": 31
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"def clean_text(df, text_column, output_column):\n",
+					"    \"\"\"\n",
+					"    Comprehensive text cleaning function optimized for word clouds.\n",
+					"    Parameters:\n",
+					"    -----------\n",
+					"    df : DataFrame\n",
+					"        Input Spark DataFrame\n",
+					"    text_column : str\n",
+					"        Name of the column containing text to clean\n",
+					"    output_column : str\n",
+					"        Name of the column to store cleaned text\n",
+					"    Returns:\n",
+					"    --------\n",
+					"    DataFrame\n",
+					"        DataFrame with cleaned text optimized for word clouds\n",
+					"    \"\"\"\n",
+					"    df = df.withColumn(text_column,\n",
+					"                     F.when(F.col(text_column).isNull(), \"\")\n",
+					"                     .otherwise(F.col(text_column)))\n",
+					"    \n",
+					"    # Step 1: Basic cleaning\n",
+					"    cleaned = F.lower(F.col(text_column))\n",
+					"    cleaned = F.regexp_replace(cleaned, r'http\\S+|www\\S+|https\\S+', '')  # Remove URLs\n",
+					"    cleaned = F.regexp_replace(cleaned, r'<.*?>', '')  # Remove HTML tags\n",
+					"    # Remove emojis (Unicode ranges for common emojis)\n",
+					"    cleaned = F.regexp_replace(cleaned, r'[^\\x00-\\x7F]+', '')\n",
+					"    # Remove numbers\n",
+					"    cleaned = F.regexp_replace(cleaned, r'\\b\\d+\\b', '')\n",
+					"    # Remove punctuation\n",
+					"    cleaned = F.regexp_replace(cleaned, r'[^\\w\\s]', '')\n",
+					"    # Remove special characters\n",
+					"    cleaned = F.regexp_replace(cleaned, r'[^a-zA-Z0-9\\s]', '')\n",
+					"    # Clean up whitespace\n",
+					"    cleaned = F.regexp_replace(cleaned, r'[\\r\\n]+', ' ')  # Replace newlines\n",
+					"    cleaned = F.regexp_replace(cleaned, r'\\s+', ' ')  # Collapse multiple spaces\n",
+					"    cleaned = F.trim(cleaned)  # Trim whitespace\n",
+					"    \n",
+					"    # Create intermediate DataFrame with basic cleaned text\n",
+					"    df_clean = df.withColumn(\"_cleaned_text\", cleaned)\n",
+					"    \n",
+					"    # Step 2: Tokenization\n",
+					"    tokenizer = Tokenizer(inputCol=\"_cleaned_text\", outputCol=\"_words\")\n",
+					"    df_tokenized = tokenizer.transform(df_clean)\n",
+					"    \n",
+					"    # Step 3: Remove stopwords\n",
+					"    # Get default stopwords\n",
+					"    stopwords = StopWordsRemover.loadDefaultStopWords(\"english\")\n",
+					"    # Add some common custom stopwords often irrelevant for word clouds\n",
+					"    custom_stopwords = [\"said\", \"also\", \"would\", \"could\", \"should\", \"may\", \"might\", \"must\",\n",
+					"                      \"one\", \"two\", \"three\", \"first\", \"second\", \"third\", \"like\", \"just\",\n",
+					"                      \"going\", \"get\", \"got\", \"getting\", \"even\", \"really\", \"much\",\n",
+					"                      \"many\", \"lot\", \"well\", \"back\", \"know\", \"think\", \"see\", \"say\", \"says\",\n",
+					"                      \"way\", \"make\", \"made\", \"making\", \"around\", \"next\", \"last\", \"still\"]\n",
+					"    stopwords.extend(custom_stopwords)\n",
+					"    \n",
+					"    # Remove stopwords\n",
+					"    remover = StopWordsRemover(inputCol=\"_words\", outputCol=\"_filtered_words\", stopWords=stopwords)\n",
+					"    df_filtered = remover.transform(df_tokenized)\n",
+					"    \n",
+					"    # Step 5: Join words back together for the final cleaned text \n",
+					"    df_result = df_filtered.withColumn(output_column, F.concat_ws(\" \", \"_filtered_words\"))\n",
+					"    \n",
+					"    # Clean up intermediate columns\n",
+					"    df_final = df_result.drop(\"_cleaned_text\", \"_words\", \"_filtered_words\")\n",
+					"    \n",
+					"    return df_final"
+				],
+				"execution_count": 37
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_title_cleaned = clean_text(df, 'issue_title','issue_title')\n",
+					"df_all_text_cleaned = clean_text(df_title_cleaned, 'issue_body','issue_body')\n",
+					"df_all_text_cleaned.show()"
+				],
+				"execution_count": 38
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_all_text_cleaned.write \\\n",
+					"    .format(\"delta\") \\\n",
+					"    .partitionBy(\"event_month\") \\\n",
+					"    .mode(\"overwrite\") \\\n",
+					"    .save(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event\")"
+				],
+				"execution_count": 40
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# Create a combined table with a dimension column, handling nulls\n",
+					"repo_counts = (df\n",
+					"    .filter(col(\"dim_repo_name\").isNotNull())  # Filter out null repos\n",
+					"    .groupBy(\"dim_repo_name\", 'event_month')\n",
+					"    .agg(count(\"*\").alias(\"issue_count\"))\n",
+					"    .withColumn(\"dimension_type\", lit(\"Repository\"))\n",
+					"    .withColumnRenamed(\"dim_repo_name\", \"dimension_name\"))\n",
+					"\n",
+					"org_counts = (df\n",
+					"    .filter(col(\"dim_org_name\").isNotNull())\n",
+					"    .groupBy(\"dim_org_name\", 'event_month')\n",
+					"    .agg(count(\"*\").alias(\"issue_count\"))\n",
+					"    .withColumn(\"dimension_type\", lit(\"Organization\"))\n",
+					"    .withColumnRenamed(\"dim_org_name\", \"dimension_name\"))\n",
+					"\n",
+					"# Union the tables\n",
+					"combined_counts = repo_counts.union(org_counts)\n",
+					"combined_counts.show()"
+				],
+				"execution_count": 41
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"combined_counts.write \\\n",
+					"    .format(\"delta\") \\\n",
+					"    .mode(\"overwrite\") \\\n",
+					"    .save(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/agg_org&repo_issue_count\")"
+				],
+				"execution_count": null
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"monthly_issue_actions = df.groupBy(date_format(\"event_created_at\", \"yyyy-MM\").alias(\"year_month\")).agg(\n",
+					"    count(when(col(\"action\") == \"opened\", 1)).alias(\"opened_count\"),\n",
+					"    count(when(col(\"action\") == \"closed\", 1)).alias(\"closed_count\"),\n",
+					"    count(when(col(\"action\") == \"reopened\", 1)).alias(\"reopened_count\")\n",
+					").orderBy(\"year_month\")\n",
+					"\n",
+					"monthly_issue_actions.show()"
+				],
+				"execution_count": 42
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"monthly_issue_actions.write \\\n",
+					"    .format(\"delta\") \\\n",
+					"    .mode(\"overwrite\") \\\n",
+					"    .save(\"abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/agg_monthly_issue_actions\")"
+				],
+				"execution_count": null
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"spark.stop()"
+				],
+				"execution_count": 43
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					""
+				],
+				"execution_count": null
+			}
+		]
+	}
+}

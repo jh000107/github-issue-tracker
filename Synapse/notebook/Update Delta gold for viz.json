@@ -1,0 +1,207 @@
+{
+	"name": "Update Delta gold for viz",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "59fad879-29eb-4db1-a433-477e3dd7e289"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_sparksql",
+				"display_name": "sql"
+			},
+			"language_info": {
+				"name": "sql"
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"SELECT * FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+					"limit 100"
+				],
+				"execution_count": 5
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"ALTER TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event` \n",
+					"ADD COLUMNS (is_bot BOOLEAN)"
+				],
+				"execution_count": 7
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+					"SET is_bot = CASE \n",
+					"                WHEN dim_issue_creator.is_bot = 1 then TRUE\n",
+					"                ELSE FALSE\n",
+					"            END "
+				],
+				"execution_count": 9
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"ALTER TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event` \n",
+					"ADD COLUMNS (issue_title_word_count INT,issue_body_word_count INT)"
+				],
+				"execution_count": 10
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+					"SET issue_title_word_count = CASE\n",
+					"    WHEN issue_title = '' THEN 0\n",
+					"    ELSE SIZE(array_remove(SPLIT(issue_title, ' '), ''))\n",
+					"    END,\n",
+					"    issue_body_word_count = CASE\n",
+					"    WHEN issue_body = '' THEN 0\n",
+					"    ELSE SIZE(array_remove(SPLIT(issue_body, ' '), ''))\n",
+					"    END"
+				],
+				"execution_count": 12
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"ALTER TABLE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event` \n",
+					"ADD COLUMNS (\n",
+					"    issue_resolve_time_label_sort INT,\n",
+					"    issue_title_word_count_bins STRING,\n",
+					"    issue_body_word_count_bins STRING,\n",
+					"    issue_title_word_count_bins_sort INT,\n",
+					"    issue_body_word_count_bins_sort INT\n",
+					")"
+				],
+				"execution_count": 13
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+					"SET issue_resolve_time_label_sort = CASE\n",
+					"    WHEN issue_resolve_time_label = '<1 hour' THEN 1\n",
+					"    WHEN issue_resolve_time_label = '1-6 hours' THEN 2\n",
+					"    WHEN issue_resolve_time_label = '6-24 hours' THEN 3\n",
+					"    WHEN issue_resolve_time_label = '1-7 days' THEN 4\n",
+					"    WHEN issue_resolve_time_label = '1-4 weeks' THEN 5\n",
+					"    WHEN issue_resolve_time_label = '1-6 months' THEN 6\n",
+					"    WHEN issue_resolve_time_label = '6 months - 1 year' THEN 7\n",
+					"    WHEN issue_resolve_time_label = '>1 year' THEN 8\n",
+					"    ELSE NULL\n",
+					"END,\n",
+					"issue_title_word_count_bins = CASE\n",
+					"    WHEN issue_title_word_count = 0 THEN 'Empty (0)'\n",
+					"    WHEN issue_title_word_count BETWEEN 1 AND 2 THEN 'Very Short (1-2)'\n",
+					"    WHEN issue_title_word_count BETWEEN 3 AND 4 THEN 'Short (3-4)'\n",
+					"    WHEN issue_title_word_count BETWEEN 5 AND 6 THEN 'Medium (5-6)'\n",
+					"    WHEN issue_title_word_count BETWEEN 7 AND 10 THEN 'Long (7-10)'\n",
+					"    WHEN issue_title_word_count >= 11 THEN 'Very Long (11+)'\n",
+					"    ELSE NULL\n",
+					"END,\n",
+					"issue_body_word_count_bins = CASE\n",
+					"    WHEN issue_body_word_count = 0 THEN 'Empty (0)'\n",
+					"    WHEN issue_body_word_count BETWEEN 1 AND 10 THEN 'Very Short (1-10)'\n",
+					"    WHEN issue_body_word_count BETWEEN 11 AND 25 THEN 'Short (11-25)'\n",
+					"    WHEN issue_body_word_count BETWEEN 26 AND 60 THEN 'Medium (26-60)'\n",
+					"    WHEN issue_body_word_count BETWEEN 61 AND 150 THEN 'Long (61-150)'\n",
+					"    WHEN issue_body_word_count >= 151 THEN 'Very Long (151+)'\n",
+					"    ELSE NULL\n",
+					"END"
+				],
+				"execution_count": 14
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"UPDATE delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+					"SET issue_title_word_count_bins_sort = CASE\n",
+					"    WHEN issue_title_word_count = 0 THEN 0\n",
+					"    WHEN issue_title_word_count BETWEEN 1 AND 2 THEN 1\n",
+					"    WHEN issue_title_word_count BETWEEN 3 AND 4 THEN 2\n",
+					"    WHEN issue_title_word_count BETWEEN 5 AND 6 THEN 3\n",
+					"    WHEN issue_title_word_count BETWEEN 7 AND 10 THEN 4\n",
+					"    WHEN issue_title_word_count >= 11 THEN 5\n",
+					"    ELSE NULL\n",
+					"END,\n",
+					"issue_body_word_count_bins_sort = CASE\n",
+					"    WHEN issue_body_word_count = 0 THEN 0\n",
+					"    WHEN issue_body_word_count BETWEEN 1 AND 10 THEN 1\n",
+					"    WHEN issue_body_word_count BETWEEN 11 AND 25 THEN 2\n",
+					"    WHEN issue_body_word_count BETWEEN 26 AND 60 THEN 3\n",
+					"    WHEN issue_body_word_count BETWEEN 61 AND 150 THEN 4\n",
+					"    WHEN issue_body_word_count >= 151 THEN 5\n",
+					"    ELSE NULL\n",
+					"END"
+				],
+				"execution_count": 15
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"SELECT * FROM delta.`abfss://github-realtime-issue@team13adls.dfs.core.windows.net/gold/viz_issues_event`\n",
+					"limit 5"
+				],
+				"execution_count": 16
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "python"
+					}
+				},
+				"source": [
+					"%%pyspark\n",
+					"spark.stop()"
+				],
+				"execution_count": 18
+			}
+		]
+	}
+}
