@@ -99,3 +99,9 @@ __queuestorage__
 __azurite_db*__.json
 
 .DS_Store
+
+.vscode
+
+ML/data/
+ML/trained_model/
+
