@@ -1,8 +1,12 @@
 {
-	"name": "Model Training",
+	"name": "ML Data Preprocessing",
 	"properties": {
 		"nbformat": 4,
 		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "team13",
+			"type": "BigDataPoolReference"
+		},
 		"sessionProperties": {
 			"driverMemory": "28g",
 			"driverCores": 4,
@@ -13,7 +17,7 @@
 				"spark.dynamicAllocation.enabled": "false",
 				"spark.dynamicAllocation.minExecutors": "2",
 				"spark.dynamicAllocation.maxExecutors": "2",
-				"spark.autotune.trackingId": "909aba89-6ca5-4ddf-8792-591f4d87775d"
+				"spark.autotune.trackingId": "af24580f-087b-4c7e-9dc3-ecf1797869e1"
 			}
 		},
 		"metadata": {
@@ -21,10 +25,25 @@
 			"enableDebugMode": false,
 			"kernelspec": {
 				"name": "synapse_pyspark",
-				"display_name": "python"
+				"display_name": "Synapse PySpark"
 			},
 			"language_info": {
 				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/3b608a14-90b7-42d9-82e2-77c947974137/resourceGroups/DS562-Team-13/providers/Microsoft.Synapse/workspaces/team13-github-realtime-events/bigDataPools/team13",
+				"name": "team13",
+				"type": "Spark",
+				"endpoint": "https://team13-github-realtime-events.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/team13",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net"
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 3,
+				"cores": 4,
+				"memory": 28,
+				"automaticScaleJobs": false
 			},
 			"sessionKeepAliveTimeout": 30
 		},
@@ -32,14 +51,21 @@
 			{
 				"cell_type": "code",
 				"source": [
+					"from pyspark.sql.functions import col, concat_ws"
+				],
+				"execution_count": 1
+			},
+			{
+				"cell_type": "code",
+				"source": [
 					"storage_account_name = \"team13adls\"\n",
 					"container_name = \"github-realtime-issue\"\n",
-					"dataset_path = \"gold/viz_issues_event/event_month=2024-01\"\n",
+					"dataset_path = \"gold/viz_issues_event/event_month=*/\"\n",
 					"\n",
 					"adls_path = f\"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/{dataset_path}\"\n",
 					""
 				],
-				"execution_count": null
+				"execution_count": 2
 			},
 			{
 				"cell_type": "code",
@@ -48,80 +74,37 @@
 					"\n",
 					"df.printSchema()"
 				],
-				"execution_count": null
+				"execution_count": 3
 			},
 			{
 				"cell_type": "code",
 				"source": [
-					"from pyspark.sql.functions import col, concat_ws\n",
-					"\n",
+					"# Combine issue_title and issue_body into one column\n",
 					"df = df.withColumn(\"text\", concat_ws(\" \", col(\"issue_title\"), col(\"issue_body\")))\n",
+					"\n",
+					"# Drop nulls in text and label\n",
 					"df = df.dropna(subset=[\"text\", \"issue_resolve_time_label\"])\n",
-					"df_clean = df.select(\"text\", \"issue_resolve_time_label\")"
+					"\n",
+					"# Select only what we need\n",
+					"df_clean = df.select(\"text\", \"issue_resolve_time_label\")\n",
+					"\n",
+					"# Sample 1% of the data\n",
+					"df_sample = df_clean.sample(fraction=0.01, seed=42)\n",
+					"\n",
+					"print(f\"Sample size: {df_sample.count()} rows\")\n",
+					"\n",
+					"# Write the sample to gold layer as training data\n",
+					"output_path = f\"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/gold/training_data/\"\n",
+					"df_sample.write.mode(\"overwrite\").option(\"header\", True).csv(output_path)\n",
+					"\n",
+					"print(\"Sampled training data saved to gold layer.\")"
 				],
-				"execution_count": null
+				"execution_count": 4
 			},
 			{
 				"cell_type": "code",
 				"source": [
-					"from pyspark.ml.feature import Tokenizer, StopWordsRemover, HashingTF, IDF, StringIndexer\n",
-					"\n",
-					"# Tokenize text\n",
-					"tokenizer = Tokenizer(inputCol=\"text\", outputCol=\"words\")\n",
-					"words_data = tokenizer.transform(df_clean)\n",
-					"\n",
-					"# Remove stop words\n",
-					"remover = StopWordsRemover(inputCol=\"words\", outputCol=\"filtered\")\n",
-					"filtered_data = remover.transform(words_data)\n",
-					"\n",
-					"# TF → term frequency\n",
-					"hashing_tf = HashingTF(inputCol=\"filtered\", outputCol=\"rawFeatures\", numFeatures=10000)\n",
-					"featurized_data = hashing_tf.transform(filtered_data)\n",
-					"\n",
-					"# IDF → inverse document frequency\n",
-					"idf = IDF(inputCol=\"rawFeatures\", outputCol=\"features\")\n",
-					"idf_model = idf.fit(featurized_data)\n",
-					"rescaled_data = idf_model.transform(featurized_data)"
-				],
-				"execution_count": null
-			},
-			{
-				"cell_type": "code",
-				"source": [
-					"label_indexer = StringIndexer(inputCol=\"resolve_time_label\", outputCol=\"label\")\n",
-					"rescaled_data = label_indexer.fit(rescaled_data).transform(rescaled_data)"
-				],
-				"execution_count": null
-			},
-			{
-				"cell_type": "code",
-				"source": [
-					"from pyspark.ml.classification import LogisticRegression\n",
-					"\n",
-					"(training_data, test_data) = rescaled_data.randomSplit([0.8, 0.2], seed=42)\n",
-					"\n",
-					"lr = LogisticRegression(featuresCol=\"features\", labelCol=\"label\", maxIter=10)\n",
-					"lr_model = lr.fit(training_data)"
-				],
-				"execution_count": null
-			},
-			{
-				"cell_type": "code",
-				"source": [
-					"from pyspark.ml.evaluation import MulticlassClassificationEvaluator\n",
-					"\n",
-					"predictions = lr_model.transform(test_data)\n",
-					"evaluator = MulticlassClassificationEvaluator(labelCol=\"label\", predictionCol=\"prediction\", metricName=\"accuracy\")\n",
-					"\n",
-					"accuracy = evaluator.evaluate(predictions)\n",
-					"print(f\"Test Accuracy = {accuracy:.4f}\")"
-				],
-				"execution_count": null
-			},
-			{
-				"cell_type": "code",
-				"source": [
-					"lr_model.write().overwrite().save(f\"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/models/lr_issue_classifier\")"
+					""
 				],
 				"execution_count": null
 			}
