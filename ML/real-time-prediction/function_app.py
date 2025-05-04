@@ -56,8 +56,8 @@ def PredictIssue(azeventhub: func.EventHubEvent):
 
     try:
         data = json.loads(azeventhub.get_body().decode("utf-8"))
-        title = data.get("issue_title", "")
-        body = data.get("issue_body", "")
+        title = data.get("payload", {}).get("issue", {}).get("title", "")
+        body = data.get("payload", {}).get("issue", {}).get("body", "")
         full_text = clean_text(f"{title} {body}")
 
         X = tfidf.transform([full_text])

@@ -7,7 +7,7 @@ load_dotenv()  # Load from .env file
 account_name = "team13adls"
 account_key = os.getenv("STORAGE_ACCOUNT_KEY")  # Set this in your environment variables
 container_name = "github-realtime-issue"
-target_path = "models/issue_classifer/"
+target_path = "models/issue_classifier/"
 local_model_folder = "./trained_model"
 
 blob_service_client = BlobServiceClient(
